@@ -1,0 +1,34 @@
+name: CI_build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+    strategy:
+      max-parallel: 6
+      matrix:
+        build_configuration: [Release, Debug]
+        build_platform: [x64, Win32]
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Add msbuild to PATH
+      uses: microsoft/setup-msbuild@v1
+
+    - name: MSBuild of Notepad++ solution (Lexilla, Scintilla)
+      working-directory: .\PowerEditor\visual.net
+      run: msbuild notepadPlus.sln /m /p:configuration="${{ matrix.build_configuration }}" /p:platform="${{ matrix.build_platform }}" /p:PlatformToolset="v143"
+
+    - name: Archive
+      uses: actions/upload-artifact@v3
+      with:
+          name: Notepad_plus_plus-${{ matrix.build_configuration }}-${{ matrix.build_platform }}
+          path: |
+            PowerEditor\bin\notepad++.exe
+            PowerEditor\bin64\notepad++.exe
+            PowerEditor\visual.net\${{ matrix.build_configuration }}\notepad++.exe
+            PowerEditor\visual.net\x64\${{ matrix.build_configuration }}\notepad++.exe
