@@ -777,7 +777,6 @@
 					<Item id="21101" name="預設樣式設定"/>
 					<Item id="21102" name="樣式"/>
 					<Item id="21105" name="資訊與教程："/>
-					<Item id="21104" name="臨時文件網站："/>
 					<Item id="21106" name="最大化摺疊（包括空行）"/>
 					<Item id="21220" name="摺疊設定一："/>
 					<Item id="21224" name="起始關鍵字："/>
@@ -1317,6 +1316,8 @@
 			<DocReloadWarning title="重新載入" message="你確定要重新載入目前文件，並捨棄在 Notepad++ 中所做的修改嗎？"/>
 			<FileLockedWarning title="儲存失敗" message="請檢查其他應用程式是否已開啟此檔案。"/>
 			<FileAlreadyOpenedInNpp title="已開啟" message="這個檔案已在 Notepad++ 中開啟。"/>
+			<RenameTabTemporaryNameAlreadyInUse title="命名失敗" message="指定的名稱已在另一個頁籤上使用。"/><!-- HowToReproduce: Rename the tab of an untitled document and provide a name that is the same as an already-existing tab of an untitled document. -->
+			<RenameTabTemporaryNameIsEmpty title="命名失敗" message="指定的名稱不能為空字串，或者不能只包含空白字元。"/><!-- HowToReproduce: Rename the tab of an untitled document and provide an empty string or only some white speces. -->
 			<DeleteFileFailed title="刪除失敗" message="檔案刪除失敗。"/>
 			<NbFileToOpenImportantWarning title="開啟檔案" message="你確定要開啟全數 $INT_REPLACE$ 個檔案嗎？"/>
 			<SettingsOnCloudError title="雲端設定" message="設定的雲端路徑位於一個唯讀的磁碟或未擁有寫入權限的資料夾，因此你的「雲端」設定將被清除。
@@ -1503,17 +1504,13 @@
 			<find-status-end-reached value="搜尋：從上面找到相符的字串。搜尋已抵達文件結尾。"/>
 			<find-status-replaceinfiles-1-replaced value="在檔案中取代：取代了 1 個字串。"/>
 			<find-status-replaceinfiles-nb-replaced value="在檔案中取代：取代了 $INT_REPLACE$ 個字串。"/>
-			<find-status-replaceinfiles-re-malformed value="在所有開啟文件中取代：無效的規則運算式。"/>
 			<find-status-replaceinopenedfiles-1-replaced value="在所有開啟文件中取代：取代了 1 個字串。"/>
 			<find-status-replaceinopenedfiles-nb-replaced value="在所有開啟文件中取代：取代了 $INT_REPLACE$ 個字串。"/>
-			<find-status-mark-re-malformed value="無效的規則運算式。"/>
 			<find-status-invalid-re value="搜尋：無效的規則運算式。"/>
 			<find-status-mark-1-match value="1 個相符。"/>
 			<find-status-mark-nb-matches value="$INT_REPLACE$ 個相符。"/>
-			<find-status-count-re-malformed value="標記：無效的規則運算式。"/>
 			<find-status-count-1-match value="標記：1 個相符。"/>
 			<find-status-count-nb-matches value="標記：$INT_REPLACE$ 個相符。"/>
-			<find-status-replaceall-re-malformed value="全部取代：無效的規則運算式。"/>
 			<find-status-replaceall-1-replaced value="全部取代：取代了 1 個字串。"/>
 			<find-status-replaceall-nb-replaced value="全部取代：取代了 $INT_REPLACE$ 個字串。"/>
 			<find-status-replaceall-readonly value="全部取代：檔案為唯讀，無法取代字串。"/>
