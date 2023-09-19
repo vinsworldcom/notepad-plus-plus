@@ -428,7 +428,7 @@ In short: The easier the code review is, the better the chance your pull request
     parseYesNoBoolAttribute();
     ```
 
-11. Check if there is already defined global variable, and reuse it instead of defining new one.
+11. Check if there are already defined global variables, and reuse them instead of defining new ones.
 
 12. Avoid "Yoda conditions".
 
@@ -446,4 +446,4 @@ In short: The easier the code review is, the better the chance your pull request
     ...
     ```
 
-13. Check [C++ Core Guidlines](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md) for additional guidelines.
+13. Check [C++ Core Guidelines](https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md) for additional guidelines.
