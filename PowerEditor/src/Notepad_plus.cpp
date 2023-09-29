@@ -7602,7 +7602,7 @@ static const QuoteParams quotes[] =
 	{TEXT("Michael Feldman"), QuoteParams::slow, false, SC_CP_UTF8, L_TEXT, TEXT("Java is, in many ways, C++--.")},
 	{TEXT("Don Ho"), QuoteParams::slow, false, SC_CP_UTF8, L_TEXT, TEXT("Je mange donc je chie.")},
 	{TEXT("Don Ho #2"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("RTFM is the true path of every developer.\nBut it would happen only if there's no way out.")},
-	{TEXT("Don Ho #3"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Smartphone is the best invention of 21st century for avoiding the eyes contact while crossing people you know on the street.")},
+	{TEXT("Don Ho #3"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("The smartphone is the best invention of the 21st century for avoiding eye contact with people you know while crossing the street.")},
 	{TEXT("Don Ho #4"), QuoteParams::rapid, false, SC_CP_UTF8, L_TEXT, TEXT("Poor countries' museums vs. rich countries' museums:\nThe first show what they have left.\nThe second show what they have stolen.")},
 	{TEXT("Anonymous #1"), QuoteParams::slow, false, SC_CP_UTF8, L_TEXT, TEXT("An opinion without 3.14 is just an onion.")},
 	{TEXT("Anonymous #2"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Before sex, you help each other get naked, after sex you only dress yourself.\nMoral of the story: in life no one helps you once you're fucked.")},
@@ -7638,7 +7638,7 @@ static const QuoteParams quotes[] =
 	{TEXT("Anonymous #32"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Two bytes meet. The first byte asks, \"You look terrible. Are you OK?\"\nThe second byte replies, \"No, just feeling a bit off.\"")},
 	{TEXT("Anonymous #33"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Programmer - an organism that turns coffee into software.")},
 	{TEXT("Anonymous #34"), QuoteParams::slow, false, SC_CP_UTF8, L_TEXT, TEXT("It's not a bug - it's an undocumented feature.")},
-	{TEXT("Anonymous #35"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Should array index start at 0 or 1?\nMy compromised solution is 0.5")},
+	{TEXT("Anonymous #35"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Should an array index start at 0 or 1?\nMy compromised solution is 0.5")},
 	{TEXT("Anonymous #36"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Every single time when I'm about to hug someone extremely sexy, I hit the mirror.")},
 	{TEXT("Anonymous #37"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("My software never has bugs. It just develops random features.")},
 	{TEXT("Anonymous #38"), QuoteParams::slow, false, SC_CP_UTF8, L_TEXT, TEXT("LISP = Lots of Irritating Silly Parentheses.")},
@@ -7720,7 +7720,7 @@ static const QuoteParams quotes[] =
 	{TEXT("Anonymous #115"), QuoteParams::slow, false, SC_CP_UTF8, L_TEXT, TEXT("YOLOLO:\nYou Only LOL Once.")},
 	{TEXT("Anonymous #116"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("Every exit is an entrance to new experiences.")},
 	{TEXT("Anonymous #117"), QuoteParams::rapid, false, SC_CP_UTF8, L_TEXT, TEXT("A Native American was asked:\n\"Do you celebrate Columbus day?\"\nHe replied:\n\"I don't know, do Jews celebrate Hitler's birthday?\"")},
-	{TEXT("Anonymous #118"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("I love necrophilia, but i can't stand the awkward silences.")},
+	{TEXT("Anonymous #118"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("I love necrophilia, but I can't stand the awkward silences.")},
 	{TEXT("Anonymous #119"), QuoteParams::rapid, true, SC_CP_UTF8, L_TEXT, TEXT("\"I'm gonna Google that. BING that, Bing that, sorry.\"\n- The CEO of Bing (many times per day still)")},
 	{TEXT("Anonymous #120"), QuoteParams::rapid, false, SC_CP_UTF8, L_TEXT, TEXT("GRAMMAR\nThe difference between knowing your shit and knowing you're shit.")},
 	{TEXT("Anonymous #121"), QuoteParams::rapid, false, SC_CP_UTF8, L_TEXT, TEXT("5 out of 6 people agree that Russian roulette is completely safe.")},
@@ -8459,26 +8459,26 @@ DWORD WINAPI Notepad_plus::backupDocument(void * /*param*/)
 //-- undoStreamComment: New function to undo stream comment around or within selection end-points.
 bool Notepad_plus::undoStreamComment(bool tryBlockComment)
 {
-	const TCHAR *commentStart;
-	const TCHAR *commentEnd;
-	const TCHAR *commentLineSymbol;
+	const TCHAR* commentStart;
+	const TCHAR* commentEnd;
+	const TCHAR* commentLineSymbol;
 
 	generic_string symbolStart;
 	generic_string symbolEnd;
 	generic_string symbol;
 
 	const int charbufLen = 10;
-    TCHAR charbuf[charbufLen];
+	TCHAR charbuf[charbufLen]{};
 
 	bool retVal = false;
 
-	Buffer * buf = _pEditView->getCurrentBuffer();
+	Buffer* buf = _pEditView->getCurrentBuffer();
 	//-- Avoid side-effects (e.g. cursor moves number of comment-characters) when file is read-only.
 	if (buf->isReadOnly())
 		return false;
 	if (buf->getLangType() == L_USER)
 	{
-		UserLangContainer * userLangContainer = NppParameters::getInstance().getULCFromName(buf->getUserDefineLangName());
+		UserLangContainer* userLangContainer = NppParameters::getInstance().getULCFromName(buf->getUserDefineLangName());
 		if (!userLangContainer)
 			return false;
 
@@ -8528,7 +8528,7 @@ bool Notepad_plus::undoStreamComment(bool tryBlockComment)
 		//-- Note: The caretPosition is either at selectionEnd or at selectionStart!! selectionStart is always before (smaller) than selectionEnd!!
 
 		//-- First, search all start_comment and end_comment before and after the selectionStart and selectionEnd position.
-		const int iSelStart=0, iSelEnd=1;
+		const int iSelStart = 0, iSelEnd = 1;
 		const size_t N_CMNT = 2;
 		intptr_t posStartCommentBefore[N_CMNT], posEndCommentBefore[N_CMNT], posStartCommentAfter[N_CMNT], posEndCommentAfter[N_CMNT];
 		bool blnStartCommentBefore[N_CMNT], blnEndCommentBefore[N_CMNT], blnStartCommentAfter[N_CMNT], blnEndCommentAfter[N_CMNT];
@@ -8562,8 +8562,8 @@ bool Notepad_plus::undoStreamComment(bool tryBlockComment)
 			&& (!blnEndCommentBefore[iSelStart] || (posStartCommentBefore[iSelStart] >= posEndCommentBefore[iSelStart]))
 			&& (!blnStartCommentAfter[iSelStart] || (posEndCommentAfter[iSelStart] <= posStartCommentAfter[iSelStart])))
 		{
-				posStartComment = posStartCommentBefore[iSelStart];
-				posEndComment   = posEndCommentAfter[iSelStart];
+			posStartComment = posStartCommentBefore[iSelStart];
+			posEndComment = posEndCommentAfter[iSelStart];
 		}
 		else //-- Second, check if there is a stream-comment around the selectionEnd position:
 		{
@@ -8583,16 +8583,16 @@ bool Notepad_plus::undoStreamComment(bool tryBlockComment)
 				&& (!blnEndCommentBefore[iSelEnd] || (posStartCommentBefore[iSelEnd] >= posEndCommentBefore[iSelEnd]))
 				&& (!blnStartCommentAfter[iSelEnd] || (posEndCommentAfter[iSelEnd] <= posStartCommentAfter[iSelEnd])))
 			{
-					posStartComment = posStartCommentBefore[iSelEnd];
-					posEndComment   = posEndCommentAfter[iSelEnd];
+				posStartComment = posStartCommentBefore[iSelEnd];
+				posEndComment = posEndCommentAfter[iSelEnd];
 			}
 			//-- Third, check if there is a stream-comment within the selected area:
-			else if ( (blnStartCommentAfter[iSelStart] && (posStartCommentAfter[iSelStart] < selectionEnd))
-				&& (blnEndCommentBefore[iSelEnd] && (posEndCommentBefore[iSelEnd] >  selectionStart)))
+			else if ((blnStartCommentAfter[iSelStart] && (posStartCommentAfter[iSelStart] < selectionEnd))
+				&& (blnEndCommentBefore[iSelEnd] && (posEndCommentBefore[iSelEnd] > selectionStart)))
 			{
-					//-- If there are more than one stream-comment within the selection, take the first one after selectionStart!!
-					posStartComment = posStartCommentAfter[iSelStart];
-					posEndComment   = posEndCommentAfter[iSelStart];
+				//-- If there are more than one stream-comment within the selection, take the first one after selectionStart!!
+				posStartComment = posStartCommentAfter[iSelStart];
+				posEndComment = posEndCommentAfter[iSelStart];
 			}
 			//-- Finally, if there is no stream-comment, return
 			else
@@ -8605,16 +8605,16 @@ bool Notepad_plus::undoStreamComment(bool tryBlockComment)
 		//-- Ok, there are valid start-comment and valid end-comment around the caret-position.
 		//   Now, un-comment stream-comment:
 		retVal = true;
-		intptr_t startCommentLength = start_comment_length;
-		intptr_t endCommentLength = end_comment_length;
+		intptr_t startCommentLength = static_cast<intptr_t>(start_comment_length);
+		intptr_t endCommentLength = static_cast<intptr_t>(end_comment_length);
 
 		//-- First delete end-comment, so that posStartCommentBefore does not change!
 		//-- Get character before end-comment to decide, if there is a white character before the end-comment, which will be removed too!
-		_pEditView->getGenericText(charbuf, charbufLen, posEndComment-1, posEndComment);
-		if (wcsncmp(charbuf, white_space.c_str(), white_space.length()) == 0)
+		_pEditView->getGenericText(charbuf, charbufLen, posEndComment - 1, posEndComment);
+		if (wcsnicmp(charbuf, white_space.c_str(), white_space.length()) == 0)
 		{
-			endCommentLength +=1;
-			posEndComment-=1;
+			endCommentLength += 1;
+			posEndComment -= 1;
 		}
 		//-- Delete end stream-comment string ---------
 		_pEditView->execute(SCI_BEGINUNDOACTION);
@@ -8622,9 +8622,9 @@ bool Notepad_plus::undoStreamComment(bool tryBlockComment)
 		_pEditView->execute(SCI_REPLACESEL, 0, reinterpret_cast<LPARAM>(""));
 
 		//-- Get character after start-comment to decide, if there is a white character after the start-comment, which will be removed too!
-		_pEditView->getGenericText(charbuf, charbufLen, posStartComment+startCommentLength, posStartComment+startCommentLength+1);
-		if (wcsncmp(charbuf, white_space.c_str(), white_space.length()) == 0)
-			startCommentLength +=1;
+		_pEditView->getGenericText(charbuf, charbufLen, posStartComment + startCommentLength, posStartComment + startCommentLength + 1);
+		if (wcsnicmp(charbuf, white_space.c_str(), white_space.length()) == 0)
+			startCommentLength += 1;
 
 		//-- Delete starting stream-comment string ---------
 		_pEditView->execute(SCI_SETSEL, posStartComment, posStartComment + startCommentLength);
@@ -8636,36 +8636,34 @@ bool Notepad_plus::undoStreamComment(bool tryBlockComment)
 		//   selectionStart
 		if (selectionStart > posStartComment)
 		{
-			if (selectionStart >= posStartComment+startCommentLength)
-				selectionStartMove = -startCommentLength;
+			if (selectionStart >= posStartComment + startCommentLength)
+				selectionStartMove = -static_cast<intptr_t>(startCommentLength);
 			else
-				selectionStartMove = -selectionStart - posStartComment;
+				selectionStartMove = -static_cast<intptr_t>(selectionStart - posStartComment);
 		}
 		else
 			selectionStartMove = 0;
 
 		//   selectionEnd
-		if (selectionEnd >= posEndComment+endCommentLength)
-			selectionEndMove = -startCommentLength+endCommentLength;
+		if (selectionEnd >= posEndComment + endCommentLength)
+			selectionEndMove = -static_cast<intptr_t>(startCommentLength + endCommentLength);
 		else if (selectionEnd <= posEndComment)
-			selectionEndMove = -startCommentLength;
+			selectionEndMove = -static_cast<intptr_t>(startCommentLength);
 		else
-			selectionEndMove = -startCommentLength + (selectionEnd - posEndComment);
+			selectionEndMove = -static_cast<intptr_t>(startCommentLength + (selectionEnd - posEndComment));
 
 		//-- Reset selection of text without deleted stream-comment-string
 		if (move_caret)
 		{
 			// moving caret to the beginning of selected block
-			_pEditView->execute(SCI_GOTOPOS, selectionEnd+selectionEndMove);
-			_pEditView->execute(SCI_SETCURRENTPOS, selectionStart+selectionStartMove);
+			_pEditView->execute(SCI_GOTOPOS, selectionEnd + selectionEndMove);
+			_pEditView->execute(SCI_SETCURRENTPOS, selectionStart + selectionStartMove);
 		}
 		else
 		{
-			_pEditView->execute(SCI_SETSEL, selectionStart+selectionStartMove, selectionEnd+selectionEndMove);
+			_pEditView->execute(SCI_SETSEL, selectionStart + selectionStartMove, selectionEnd + selectionEndMove);
 		}
-	}
-	while (1); //do as long as stream-comments are within selection
-
+	} while (1); //do as long as stream-comments are within selection
 }
 
 void Notepad_plus::monitoringStartOrStopAndUpdateUI(Buffer* pBuf, bool isStarting)

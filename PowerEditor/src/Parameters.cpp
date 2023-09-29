@@ -421,6 +421,7 @@ static const WinMenuKeyDefinition winKeyDefs[] =
 
 	{ VK_F5,      IDM_EXECUTE,                                  false, false, false, nullptr },
 
+	{ VK_NULL,    IDM_WINDOW_WINDOWS,                           false, false, false, nullptr },
 	{ VK_NULL,    IDM_WINDOW_SORT_FN_ASC,                       false, false, false, TEXT("Sort By Name A to Z") },
 	{ VK_NULL,    IDM_WINDOW_SORT_FN_DSC,                       false, false, false, TEXT("Sort By Name Z to A") },
 	{ VK_NULL,    IDM_WINDOW_SORT_FP_ASC,                       false, false, false, TEXT("Sort By Path A to Z") },
@@ -1604,8 +1605,22 @@ bool NppParameters::load()
 		_doNppLogNulContentCorruptionIssue = (PathFileExists(filePath2.c_str()) == TRUE);
 	}
 
-
-
+	//-------------------------------------------------------------//
+	// noRestartAutomatically.xml                                  //
+	// This empty xml file is optional - user adds this empty file //
+	// manually in order to prevent Notepad++ registration         //
+	// for the Win10+ OS app-restart feature.                      //
+	//-------------------------------------------------------------//
+	filePath = _nppPath;
+	std::wstring noRegForOSAppRestartTrigger = L"noRestartAutomatically.xml";
+	pathAppend(filePath, noRegForOSAppRestartTrigger);
+	_isRegForOSAppRestartDisabled = (::PathFileExists(filePath.c_str()) == TRUE);
+	if (!_isRegForOSAppRestartDisabled)
+	{
+		filePath = _userPath;
+		pathAppend(filePath, noRegForOSAppRestartTrigger);
+		_isRegForOSAppRestartDisabled = (::PathFileExists(filePath.c_str()) == TRUE);
+	}
 
 	return isAllLaoded;
 }

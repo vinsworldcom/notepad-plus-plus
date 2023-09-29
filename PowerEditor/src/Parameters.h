@@ -851,6 +851,7 @@ struct NppGUI final
 	std::wstring _definedSessionExt;
 	std::wstring _definedWorkspaceExt;
 
+	// items with no Notepad++ GUI to set
 	std::wstring _commandLineInterpreter = CMD_INTERPRETER;
 
 	struct AutoUpdateOptions
@@ -1863,6 +1864,7 @@ public:
 	bool isAdmin() const { return _isAdminMode; }
 	bool regexBackward4PowerUser() const { return _findHistory._regexBackward4PowerUser; }
 	bool isSelectFgColorEnabled() const { return _isSelectFgColorEnabled; };
+	bool isRegForOSAppRestartDisabled() const { return _isRegForOSAppRestartDisabled; };
 
 private:
 	bool _isAnyShortcutModified = false;
@@ -1929,6 +1931,7 @@ private:
 	bool _isAdminMode = false;
 
 	bool _isSelectFgColorEnabled = false;
+	bool _isRegForOSAppRestartDisabled = false;
 
 	bool _doNppLogNetworkDriveIssue = false;
 
