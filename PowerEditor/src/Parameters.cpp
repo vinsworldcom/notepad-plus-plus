@@ -479,7 +479,7 @@ static const ScintillaKeyDefinition scintKeyDefs[] =
 	{TEXT("SCI_ZOOMIN"),                  SCI_ZOOMIN,                  true,  false, false, VK_ADD,      IDM_VIEW_ZOOMIN},
 	{TEXT("SCI_ZOOMOUT"),                 SCI_ZOOMOUT,                 true,  false, false, VK_SUBTRACT, IDM_VIEW_ZOOMOUT},
 	{TEXT("SCI_SETZOOM"),                 SCI_SETZOOM,                 true,  false, false, VK_DIVIDE,   IDM_VIEW_ZOOMRESTORE},
-	{TEXT("SCI_SELECTIONDUPLICATE"),      SCI_SELECTIONDUPLICATE,      true,  false, false, VK_D,        IDM_EDIT_DUP_LINE},
+	{TEXT("SCI_SELECTIONDUPLICATE"),      SCI_SELECTIONDUPLICATE,      true,  false, false, VK_D,        0},
 	{TEXT("SCI_LINESJOIN"),               SCI_LINESJOIN,               false, false, false, 0,           0},
 	{TEXT("SCI_SCROLLCARET"),             SCI_SCROLLCARET,             false, false, false, 0,           0},
 	{TEXT("SCI_EDITTOGGLEOVERTYPE"),      SCI_EDITTOGGLEOVERTYPE,      false, false, false, VK_INSERT,   0},
@@ -560,7 +560,7 @@ static const ScintillaKeyDefinition scintKeyDefs[] =
 	{TEXT("SCI_LINECUT"),                 SCI_LINECUT,                 true,  false, false, VK_L,        0},
 	{TEXT("SCI_LINECOPY"),                SCI_LINECOPY,                true,  false, true,  VK_X,        0},
 	{TEXT("SCI_LINETRANSPOSE"),           SCI_LINETRANSPOSE,           true,  false, false, VK_T,        0},
-	{TEXT("SCI_LINEDUPLICATE"),           SCI_LINEDUPLICATE,           false, false, false, 0,           0},
+	{TEXT("SCI_LINEDUPLICATE"),           SCI_LINEDUPLICATE,           false, false, false, 0,           IDM_EDIT_DUP_LINE},
 	{TEXT("SCI_CANCEL"),                  SCI_CANCEL,                  false, false, false, VK_ESCAPE,   0},
 	{TEXT("SCI_SWAPMAINANCHORCARET"),     SCI_SWAPMAINANCHORCARET,     false, false, false, 0,           0},
 	{TEXT("SCI_ROTATESELECTION"),         SCI_ROTATESELECTION,         false, false, false, 0,           0}
@@ -2264,12 +2264,21 @@ void NppParameters::setWorkingDir(const TCHAR * newPath)
 	}
 }
 
-bool NppParameters::loadSession(Session & session, const TCHAR *sessionFileName)
+bool NppParameters::loadSession(Session& session, const TCHAR* sessionFileName, const bool bSuppressErrorMsg)
 {
-	TiXmlDocument *pXmlSessionDocument = new TiXmlDocument(sessionFileName);
+	TiXmlDocument* pXmlSessionDocument = new TiXmlDocument(sessionFileName);
 	bool loadOkay = pXmlSessionDocument->LoadFile();
 	if (loadOkay)
 		loadOkay = getSessionFromXmlTree(pXmlSessionDocument, session);
+
+	if (!loadOkay && !bSuppressErrorMsg)
+	{
+		_pNativeLangSpeaker->messageBox("SessionFileInvalidError",
+			NULL,
+			TEXT("Session file is either corrupted or not valid."),
+			TEXT("Could not Load Session"),
+			MB_OK);
+	}
 
 	delete pXmlSessionDocument;
 	return loadOkay;
@@ -4871,6 +4880,21 @@ void NppParameters::feedGUIParameters(TiXmlNode *node)
 				}
 			}
 		}
+		else if (!lstrcmp(nm, TEXT("KeepSessionAbsentFileEntries")))
+		{
+			TiXmlNode *n = childNode->FirstChild();
+			if (n)
+			{
+				const TCHAR* val = n->Value();
+				if (val)
+				{
+					if (lstrcmp(val, TEXT("yes")) == 0)
+						_nppGUI._keepSessionAbsentFileEntries = true;
+					else
+						_nppGUI._keepSessionAbsentFileEntries = false;
+				}
+			}
+		}
 		else if (!lstrcmp(nm, TEXT("DetectEncoding")))
 		{
 			TiXmlNode *n = childNode->FirstChild();
@@ -7036,6 +7060,11 @@ void NppParameters::createXmlTreeFromGUIParams()
 	// <GUIConfig name = "RememberLastSession">yes< / GUIConfig>
 	{
 		insertGUIConfigBoolNode(newGUIRoot, TEXT("RememberLastSession"), _nppGUI._rememberLastSession);
+	}
+
+	// <GUIConfig name = "RememberLastSession">yes< / GUIConfig>
+	{
+		insertGUIConfigBoolNode(newGUIRoot, TEXT("KeepSessionAbsentFileEntries"), _nppGUI._keepSessionAbsentFileEntries);
 	}
 
 	// <GUIConfig name = "DetectEncoding">yes< / GUIConfig>
