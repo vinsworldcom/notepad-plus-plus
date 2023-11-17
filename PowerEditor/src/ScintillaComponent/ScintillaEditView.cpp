@@ -511,7 +511,58 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 		
 		case WM_KEYDOWN:
 		{
-			if ((execute(SCI_GETSELECTIONMODE) == SC_SEL_RECTANGLE) || (execute(SCI_GETSELECTIONMODE) == SC_SEL_THIN))
+			SHORT ctrl = GetKeyState(VK_CONTROL);
+			SHORT alt = GetKeyState(VK_MENU);
+			SHORT shift = GetKeyState(VK_SHIFT);
+			bool isColumnSelection = (execute(SCI_GETSELECTIONMODE) == SC_SEL_RECTANGLE) || (execute(SCI_GETSELECTIONMODE) == SC_SEL_THIN);
+
+			if (wParam == VK_DELETE)
+			{
+				// 1 shortcut:
+				// Shift + Delete: without selected text, it will delete the whole line.
+				//
+				if ((shift & 0x8000) && !(ctrl & 0x8000) && !(alt & 0x8000) && !hasSelection()) // Shift-DEL & no selection
+				{
+					execute(SCI_LINEDELETE);
+					return TRUE;
+				}
+				else if (!(shift & 0x8000) && !(ctrl & 0x8000) && !(alt & 0x8000)) // DEL & Multi-edit
+				{
+					size_t nbSelections = execute(SCI_GETSELECTIONS);
+					if (nbSelections > 1)
+					{
+						execute(SCI_BEGINUNDOACTION);
+						for (size_t i = 0; i < nbSelections; ++i)
+						{
+							LRESULT posStart = execute(SCI_GETSELECTIONNSTART, i);
+							LRESULT posEnd = execute(SCI_GETSELECTIONNEND, i);
+							if (posStart != posEnd)
+							{
+								replaceTarget(L"", posStart, posEnd);
+							}
+							else // posStart == posEnd)
+							{
+								char eolStr[3];
+								Sci_TextRange tr;
+								tr.chrg.cpMin = posStart;
+								tr.chrg.cpMax = posEnd + 2;
+								tr.lpstrText = eolStr;
+								execute(SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+
+								int len = (eolStr[0] == '\r' && eolStr[1] == '\n') ? 2 : 1;
+
+								replaceTarget(L"", posStart, posEnd + len);
+							}
+
+							execute(SCI_SETSELECTIONNSTART, i, posStart);
+							execute(SCI_SETSELECTIONNEND, i, posStart);
+						}
+						execute(SCI_ENDUNDOACTION);
+						return TRUE;
+					}
+				}
+			}
+			else if (isColumnSelection)
 			{
 				//
 				// Transform the column selection to multi-edit
@@ -524,6 +575,7 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 					case VK_DOWN:
 					case VK_HOME:
 					case VK_END:
+					case VK_RETURN:
 						execute(SCI_SETSELECTIONMODE, SC_SEL_STREAM); // When it's rectangular selection and the arrow keys are pressed, we switch the mode for having multiple carets.
 
 						execute(SCI_SETSELECTIONMODE, SC_SEL_STREAM); // the 2nd call for removing the unwanted selection while moving carets.
@@ -540,35 +592,15 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 			else
 			{
 				//
-				// Add 3 shortcuts:
-				// Shift + Delete: without selected text, it will delete the whole line.
+				// 2 shortcuts:
 				// Ctrl + C: without selected text, it will copy the whole line.
 				// Ctrl + X: without selected text, it will cut the whole line.
 				//
 				switch (wParam)
 				{
-					case VK_DELETE:
-					{
-						SHORT ctrl = GetKeyState(VK_CONTROL);
-						SHORT alt = GetKeyState(VK_MENU);
-						SHORT shift = GetKeyState(VK_SHIFT);
-						if ((shift & 0x8000) && !(ctrl & 0x8000) && !(alt & 0x8000))
-						{
-							if (!hasSelection())
-							{
-								execute(SCI_LINEDELETE);
-								return TRUE;
-							}
-						}
-					}
-					break;
-
 					case 'C':
 					case 'X':
 					{
-						SHORT ctrl = GetKeyState(VK_CONTROL);
-						SHORT alt = GetKeyState(VK_MENU);
-						SHORT shift = GetKeyState(VK_SHIFT);
 						if ((ctrl & 0x8000) && !(alt & 0x8000) && !(shift & 0x8000))
 						{
 							if (!hasSelection())
@@ -583,15 +615,12 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 
 					case 'V':
 					{
-						SHORT ctrl = GetKeyState(VK_CONTROL);
-						SHORT alt = GetKeyState(VK_MENU);
-						SHORT shift = GetKeyState(VK_SHIFT);
 						if ((ctrl & 0x8000) && !(alt & 0x8000) && !(shift & 0x8000))
 						{
 							Buffer* buf = getCurrentBuffer();
 							bool isRO = buf->isReadOnly();
-							size_t numSelections = execute(SCI_GETSELECTIONS);
-							if (numSelections > 1 && !isRO)
+							size_t nbSelections = execute(SCI_GETSELECTIONS);
+							if (nbSelections > 1 && !isRO)
 							{
 								if (pasteToMultiSelection())
 								{
@@ -603,7 +632,6 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 							}
 						}
 					}
-					break;
 				}
 			}
 			break;
@@ -2868,25 +2896,45 @@ void ScintillaEditView::performGlobalStyles()
 		selectColorBack = pStyle->_bgColor;
 		selectColorFore = pStyle->_fgColor;
 	}
-	execute(SCI_SETSELBACK, 1, selectColorBack);
-	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK, selectColorBack);
+	//execute(SCI_SETSELBACK, 1, selectColorBack);
+	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_BACK, selectColorBack | 0xFF000000); // SCI_SETSELBACK is deprecated
+	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK, selectColorBack | 0xFF000000);
+
+
+	COLORREF selectMultiSelectColorBack = liteGrey;
+	pStyle = stylers.findByName(TEXT("Multi-selected text color"));
+	if (pStyle)
+	{
+		selectMultiSelectColorBack = pStyle->_bgColor;
+	}
+	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_ADDITIONAL_BACK, selectMultiSelectColorBack | 0xFF000000);
 
 	if (nppParams.isSelectFgColorEnabled())
 	{
-		execute(SCI_SETSELFORE, 1, selectColorFore);
-
 		long alphaSelectColorFore = selectColorFore;
 		alphaSelectColorFore |= 0xFF000000; // add alpha color to make DirectWrite mode work
+		//execute(SCI_SETSELFORE, 1, selectColorFore);
+		execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_TEXT, alphaSelectColorFore);  // SCI_SETSELFORE is deprecated
 		execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT, alphaSelectColorFore);
+		execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_ADDITIONAL_TEXT, alphaSelectColorFore);
 	}
 
 	COLORREF caretColor = black;
-	pStyle = stylers.findByID(SCI_SETCARETFORE);
+	pStyle = stylers.findByName(L"Caret colour");
 	if (pStyle)
 	{
 		caretColor = pStyle->_fgColor;
 	}
-	execute(SCI_SETCARETFORE, caretColor);
+	//execute(SCI_SETCARETFORE, caretColor);
+	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_CARET, caretColor | 0xFF000000); // SCI_SETCARETFORE is deprecated
+
+	COLORREF multiEditCaretColor = darkGrey;
+	pStyle = stylers.findByName(L"Multi-edit carets color");
+
+	if (pStyle)
+		multiEditCaretColor = pStyle->_fgColor;
+
+	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_CARET_ADDITIONAL, multiEditCaretColor | 0xFF000000);
 
 	COLORREF edgeColor = liteGrey;
 	pStyle = stylers.findByName(TEXT("Edge colour"));
@@ -3072,43 +3120,101 @@ void ScintillaEditView::showIndentGuideLine(bool willBeShowed)
 
 void ScintillaEditView::setLineIndent(size_t line, size_t indent) const
 {
-	Sci_CharacterRangeFull crange = getSelection();
-	int64_t posBefore = execute(SCI_GETLINEINDENTPOSITION, line);
-	execute(SCI_SETLINEINDENTATION, line, indent);
-	int64_t posAfter = execute(SCI_GETLINEINDENTPOSITION, line);
-	long long posDifference = posAfter - posBefore;
-	if (posAfter > posBefore)
-	{
-		// Move selection on
-		if (crange.cpMin >= posBefore)
-		{
-			crange.cpMin += static_cast<Sci_Position>(posDifference);
-		}
-		if (crange.cpMax >= posBefore)
-		{
-			crange.cpMax += static_cast<Sci_Position>(posDifference);
-		}
-	}
-	else if (posAfter < posBefore)
-	{
-		// Move selection back
-		if (crange.cpMin >= posAfter)
-		{
-			if (crange.cpMin >= posBefore)
-				crange.cpMin += static_cast<Sci_Position>(posDifference);
-			else
-				crange.cpMin = static_cast<Sci_Position>(posAfter);
-		}
+	size_t nbSelections = execute(SCI_GETSELECTIONS);
 
-		if (crange.cpMax >= posAfter)
+	if (nbSelections == 1)
+	{
+		Sci_CharacterRangeFull crange = getSelection();
+		int64_t posBefore = execute(SCI_GETLINEINDENTPOSITION, line);
+		execute(SCI_SETLINEINDENTATION, line, indent);
+		int64_t posAfter = execute(SCI_GETLINEINDENTPOSITION, line);
+		long long posDifference = posAfter - posBefore;
+		if (posAfter > posBefore)
 		{
+			// Move selection on
+			if (crange.cpMin >= posBefore)
+			{
+				crange.cpMin += static_cast<Sci_Position>(posDifference);
+			}
 			if (crange.cpMax >= posBefore)
+			{
 				crange.cpMax += static_cast<Sci_Position>(posDifference);
-			else
-				crange.cpMax = static_cast<Sci_Position>(posAfter);
+			}
 		}
+		else if (posAfter < posBefore)
+		{
+			// Move selection back
+			if (crange.cpMin >= posAfter)
+			{
+				if (crange.cpMin >= posBefore)
+					crange.cpMin += static_cast<Sci_Position>(posDifference);
+				else
+					crange.cpMin = static_cast<Sci_Position>(posAfter);
+			}
+
+			if (crange.cpMax >= posAfter)
+			{
+				if (crange.cpMax >= posBefore)
+					crange.cpMax += static_cast<Sci_Position>(posDifference);
+				else
+					crange.cpMax = static_cast<Sci_Position>(posAfter);
+			}
+		}
+		execute(SCI_SETSEL, crange.cpMin, crange.cpMax);
 	}
-	execute(SCI_SETSEL, crange.cpMin, crange.cpMax);
+	else
+	{
+		execute(SCI_BEGINUNDOACTION);
+		for (size_t i = 0; i < nbSelections; ++i)
+		{
+			LRESULT posStart = execute(SCI_GETSELECTIONNSTART, i);
+			LRESULT posEnd = execute(SCI_GETSELECTIONNEND, i);
+			
+
+			size_t l = execute(SCI_LINEFROMPOSITION, posStart);
+			
+			int64_t posBefore = execute(SCI_GETLINEINDENTPOSITION, l);
+			execute(SCI_SETLINEINDENTATION, l, indent);
+			int64_t posAfter = execute(SCI_GETLINEINDENTPOSITION, l);
+
+			long long posDifference = posAfter - posBefore;
+			if (posAfter > posBefore)
+			{
+				// Move selection on
+				if (posStart >= posBefore)
+				{
+					posStart += static_cast<Sci_Position>(posDifference);
+				}
+				if (posEnd >= posBefore)
+				{
+					posEnd += static_cast<Sci_Position>(posDifference);
+				}
+			}
+			else if (posAfter < posBefore)
+			{
+				// Move selection back
+				if (posStart >= posAfter)
+				{
+					if (posStart >= posBefore)
+						posStart += static_cast<Sci_Position>(posDifference);
+					else
+						posStart = static_cast<Sci_Position>(posAfter);
+				}
+
+				if (posEnd >= posAfter)
+				{
+					if (posEnd >= posBefore)
+						posEnd += static_cast<Sci_Position>(posDifference);
+					else
+						posEnd = static_cast<Sci_Position>(posAfter);
+				}
+			}
+
+			execute(SCI_SETSELECTIONNSTART, i, posStart);
+			execute(SCI_SETSELECTIONNEND, i, posEnd);
+		}
+		execute(SCI_ENDUNDOACTION);
+	}
 }
 
 void ScintillaEditView::updateLineNumberWidth()
@@ -3179,11 +3285,11 @@ void ScintillaEditView::setMultiSelections(const ColumnModeInfos & cmi)
 // specify selectionNumber = -1 for the MAIN selection
 pair<size_t, size_t> ScintillaEditView::getSelectionLinesRange(intptr_t selectionNumber /* = -1 */) const
 {
-	size_t numSelections = execute(SCI_GETSELECTIONS);
+	size_t nbSelections = execute(SCI_GETSELECTIONS);
 
 	size_t start_pos, end_pos;
 
-	if ((selectionNumber < 0) || (static_cast<size_t>(selectionNumber) >= numSelections))
+	if ((selectionNumber < 0) || (static_cast<size_t>(selectionNumber) >= nbSelections))
 	{
 		start_pos = execute(SCI_GETSELECTIONSTART);
 		end_pos = execute(SCI_GETSELECTIONEND);
@@ -4223,19 +4329,19 @@ pair<size_t, size_t> ScintillaEditView::getSelectedCharsAndLinesCount(long long 
 
 	selectedCharsAndLines.first = getUnicodeSelectedLength();
 
-	size_t numSelections = execute(SCI_GETSELECTIONS);
+	size_t nbSelections = execute(SCI_GETSELECTIONS);
 
-	if (numSelections == 1)
+	if (nbSelections == 1)
 	{
 		pair<size_t, size_t> lineRange = getSelectionLinesRange();
 		selectedCharsAndLines.second = lineRange.second - lineRange.first + 1;
 	}
 	else if (execute(SCI_SELECTIONISRECTANGLE))
 	{
-		selectedCharsAndLines.second = numSelections;
+		selectedCharsAndLines.second = nbSelections;
 	}
 	else if ((maxSelectionsForLineCount == -1) ||  // -1 means process ALL of the selections
-		(numSelections <= static_cast<size_t>(maxSelectionsForLineCount)))
+		(nbSelections <= static_cast<size_t>(maxSelectionsForLineCount)))
 	{
 		// selections are obtained from Scintilla in the order user creates them,
 		// not in a lowest-to-highest position-based order;
@@ -4244,7 +4350,7 @@ pair<size_t, size_t> ScintillaEditView::getSelectedCharsAndLinesCount(long long 
 		// by selection into low-to-high line number order before processing them further
 
 		vector< pair <size_t, size_t> > v;
-		for (size_t s = 0; s < numSelections; ++s)
+		for (size_t s = 0; s < nbSelections; ++s)
 		{
 			v.push_back(getSelectionLinesRange(s));
 		}
@@ -4267,9 +4373,9 @@ pair<size_t, size_t> ScintillaEditView::getSelectedCharsAndLinesCount(long long 
 size_t ScintillaEditView::getUnicodeSelectedLength() const
 {
 	size_t length = 0;
-	size_t numSelections = execute(SCI_GETSELECTIONS);
+	size_t nbSelections = execute(SCI_GETSELECTIONS);
 
-	for (size_t s = 0; s < numSelections; ++s)
+	for (size_t s = 0; s < nbSelections; ++s)
 	{
 		size_t start = execute(SCI_GETSELECTIONNSTART, s);
 		size_t end = execute(SCI_GETSELECTIONNEND, s);
@@ -4431,8 +4537,8 @@ void ScintillaEditView::removeAnyDuplicateLines()
 
 bool ScintillaEditView::pasteToMultiSelection() const
 {
-	size_t numSelections = execute(SCI_GETSELECTIONS);
-	if (numSelections <= 1)
+	size_t nbSelections = execute(SCI_GETSELECTIONS);
+	if (nbSelections <= 1)
 		return false;
 
 	// "MSDEVColumnSelect" is column format from Scintilla 
@@ -4448,19 +4554,50 @@ bool ScintillaEditView::pasteToMultiSelection() const
 			::GlobalUnlock(clipboardData);
 			::CloseClipboard();
 
-			vector<wstring> stringArray;
-			stringSplit(clipboardStr, getEOLString(), stringArray);
-			stringArray.erase(stringArray.cend() - 1); // remove the last empty string
+			vector<wstring> clipboardStrings;
+			stringSplit(clipboardStr, getEOLString(), clipboardStrings);
+			clipboardStrings.erase(clipboardStrings.cend() - 1); // remove the last empty string
+			size_t nbClipboardStr = clipboardStrings.size();
 
-			if (numSelections == stringArray.size())
+			if (nbSelections >= nbClipboardStr) // enough holes for every insertion, keep holes empty if there are some left
 			{
 				execute(SCI_BEGINUNDOACTION);
-				for (size_t i = 0; i < numSelections; ++i)
+				for (size_t i = 0; i < nbClipboardStr; ++i)
 				{
 					LRESULT posStart = execute(SCI_GETSELECTIONNSTART, i);
 					LRESULT posEnd = execute(SCI_GETSELECTIONNEND, i);
-					replaceTarget(stringArray[i].c_str(), posStart, posEnd);
-					posStart += stringArray[i].length();
+					replaceTarget(clipboardStrings[i].c_str(), posStart, posEnd);
+					posStart += clipboardStrings[i].length();
+					execute(SCI_SETSELECTIONNSTART, i, posStart);
+					execute(SCI_SETSELECTIONNEND, i, posStart);
+				}
+				execute(SCI_ENDUNDOACTION);
+				return true;
+			}
+			else if (nbSelections < nbClipboardStr) // not enough holes for insertion, every hole has several insertions
+			{
+				size_t nbStr2takeFromClipboard = nbClipboardStr / nbSelections;
+
+				execute(SCI_BEGINUNDOACTION);
+				size_t j = 0;
+				for (size_t i = 0; i < nbSelections; ++i)
+				{
+					LRESULT posStart = execute(SCI_GETSELECTIONNSTART, i);
+					LRESULT posEnd = execute(SCI_GETSELECTIONNEND, i);
+					wstring severalStr;
+					wstring eol = getEOLString();
+					for (size_t k = 0; k < nbStr2takeFromClipboard && j < nbClipboardStr; ++k)
+					{
+						severalStr += clipboardStrings[j];
+						severalStr += eol;
+						++j;
+					}
+
+					// remove the latest added EOL
+					severalStr.erase(severalStr.length() - eol.length());
+
+					replaceTarget(severalStr.c_str(), posStart, posEnd);
+					posStart += severalStr.length();
 					execute(SCI_SETSELECTIONNSTART, i, posStart);
 					execute(SCI_SETSELECTIONNEND, i, posStart);
 				}
