@@ -252,7 +252,7 @@ void ScintillaEditView::init(HINSTANCE hInst, HWND hPere)
 
 	const COLORREF hiddenLinesGreen = RGB(0x77, 0xCC, 0x77);
 	long hiddenLinesGreenWithAlpha = hiddenLinesGreen | 0xFF000000;
-	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_HIDDEN_LINE, hiddenLinesGreenWithAlpha);
+	setElementColour(SC_ELEMENT_HIDDEN_LINE, hiddenLinesGreenWithAlpha);
 
 	if (NppParameters::getInstance()._dpiManager.scaleX(100) >= 150)
 	{
@@ -312,10 +312,15 @@ void ScintillaEditView::init(HINSTANCE hInst, HWND hPere)
 	execute(SCI_INDICSETUNDER, SCE_UNIVERSAL_FOUND_STYLE_EXT4, true);
 	execute(SCI_INDICSETUNDER, SCE_UNIVERSAL_FOUND_STYLE_EXT5, true);
 
-	if ((NppParameters::getInstance()).getNppGUI()._writeTechnologyEngine == directWriteTechnology)
+	HMODULE hNtdllModule = ::GetModuleHandle(L"ntdll.dll");
+	FARPROC isWINE = ::GetProcAddress(hNtdllModule, "wine_get_version");
+	if ((NppParameters::getInstance()).getNppGUI()._writeTechnologyEngine == directWriteTechnology && !isWINE) // There is a performance issue under WINE when DirectWright is ON,
+	                                                                                                           // so we turn it off if user uses Notepad++ under WINE
+	{
 		execute(SCI_SETTECHNOLOGY, SC_TECHNOLOGY_DIRECTWRITE);
-	// If useDirectWrite is turned off, leave the technology setting untouched,
-	// so that existing plugins using SCI_SETTECHNOLOGY behave like before
+		// If useDirectWrite is turned off, leave the technology setting untouched,
+		// so that existing plugins using SCI_SETTECHNOLOGY behave like before
+	}
 
 	_codepage = ::GetACP();
 
@@ -576,6 +581,7 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 					case VK_HOME:
 					case VK_END:
 					case VK_RETURN:
+					case VK_BACK:
 						execute(SCI_SETSELECTIONMODE, SC_SEL_STREAM); // When it's rectangular selection and the arrow keys are pressed, we switch the mode for having multiple carets.
 
 						execute(SCI_SETSELECTIONMODE, SC_SEL_STREAM); // the 2nd call for removing the unwanted selection while moving carets.
@@ -2882,7 +2888,7 @@ void ScintillaEditView::performGlobalStyles()
 		pStyle = stylers.findByName(TEXT("Current line background colour"));
 		if (pStyle)
 		{
-			execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_CARET_LINE_BACK, pStyle->_bgColor);
+			setElementColour(SC_ELEMENT_CARET_LINE_BACK, pStyle->_bgColor);
 		}
 	}
 
@@ -2897,8 +2903,8 @@ void ScintillaEditView::performGlobalStyles()
 		selectColorFore = pStyle->_fgColor;
 	}
 	//execute(SCI_SETSELBACK, 1, selectColorBack);
-	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_BACK, selectColorBack | 0xFF000000); // SCI_SETSELBACK is deprecated
-	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_BACK, selectColorBack | 0xFF000000);
+	setElementColour(SC_ELEMENT_SELECTION_BACK, selectColorBack); // SCI_SETSELBACK is deprecated
+	setElementColour(SC_ELEMENT_SELECTION_INACTIVE_BACK, selectColorBack);
 
 
 	COLORREF selectMultiSelectColorBack = liteGrey;
@@ -2907,16 +2913,14 @@ void ScintillaEditView::performGlobalStyles()
 	{
 		selectMultiSelectColorBack = pStyle->_bgColor;
 	}
-	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_ADDITIONAL_BACK, selectMultiSelectColorBack | 0xFF000000);
+	setElementColour(SC_ELEMENT_SELECTION_ADDITIONAL_BACK, selectMultiSelectColorBack);
 
 	if (nppParams.isSelectFgColorEnabled())
 	{
-		long alphaSelectColorFore = selectColorFore;
-		alphaSelectColorFore |= 0xFF000000; // add alpha color to make DirectWrite mode work
 		//execute(SCI_SETSELFORE, 1, selectColorFore);
-		execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_TEXT, alphaSelectColorFore);  // SCI_SETSELFORE is deprecated
-		execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT, alphaSelectColorFore);
-		execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_ADDITIONAL_TEXT, alphaSelectColorFore);
+		setElementColour(SC_ELEMENT_SELECTION_TEXT, selectColorFore);  // SCI_SETSELFORE is deprecated
+		setElementColour(SC_ELEMENT_SELECTION_INACTIVE_TEXT, selectColorFore);
+		setElementColour(SC_ELEMENT_SELECTION_ADDITIONAL_TEXT, selectColorFore);
 	}
 
 	COLORREF caretColor = black;
@@ -2926,7 +2930,7 @@ void ScintillaEditView::performGlobalStyles()
 		caretColor = pStyle->_fgColor;
 	}
 	//execute(SCI_SETCARETFORE, caretColor);
-	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_CARET, caretColor | 0xFF000000); // SCI_SETCARETFORE is deprecated
+	setElementColour(SC_ELEMENT_CARET, caretColor); // SCI_SETCARETFORE is deprecated
 
 	COLORREF multiEditCaretColor = darkGrey;
 	pStyle = stylers.findByName(L"Multi-edit carets color");
@@ -2934,7 +2938,7 @@ void ScintillaEditView::performGlobalStyles()
 	if (pStyle)
 		multiEditCaretColor = pStyle->_fgColor;
 
-	execute(SCI_SETELEMENTCOLOUR, SC_ELEMENT_CARET_ADDITIONAL, multiEditCaretColor | 0xFF000000);
+	setElementColour(SC_ELEMENT_CARET_ADDITIONAL, multiEditCaretColor);
 
 	COLORREF edgeColor = liteGrey;
 	pStyle = stylers.findByName(TEXT("Edge colour"));
