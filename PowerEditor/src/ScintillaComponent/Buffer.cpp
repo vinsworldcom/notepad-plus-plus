@@ -86,6 +86,9 @@ Buffer::Buffer(FileManager * pManager, BufferID id, Document doc, DocFileStatus 
 
 	// reset after initialization
 	_canNotify = true;
+
+	if (nppParamInst.getNativeLangSpeaker()->isRTL() && nppParamInst.getNativeLangSpeaker()->isEditZoneRTL())
+		_isRTL = true;
 }
 
 
@@ -1718,10 +1721,10 @@ bool FileManager::loadFileData(Document doc, int64_t fileSize, const TCHAR * fil
 				break;
 			case SC_STATUS_BADALLOC:
 			{
-				pNativeSpeaker->messageBox("FileTooBigToOpen",
+				pNativeSpeaker->messageBox("FileMemoryAllocationFailed",
 					_pNotepadPlus->_pEditView->getHSelf(),
-					TEXT("File is too big to be opened by Notepad++"),
-					TEXT("Exception: File size problem"),
+					TEXT("There is probably not enough contiguous free memory for the file being loaded by Notepad++."),
+					TEXT("Exception: File memory allocation failed"),
 					MB_OK | MB_APPLMODAL);
 			}
 			[[fallthrough]];

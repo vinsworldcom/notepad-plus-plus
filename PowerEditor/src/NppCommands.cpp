@@ -354,16 +354,39 @@ void Notepad_plus::command(int id)
 			checkUndoState();
 			break;
 		}
-
+		
 		case IDM_EDIT_CUT:
-			_pEditView->execute(WM_CUT);
-			checkClipboard();
+		{
+			HWND focusedHwnd = ::GetFocus();
+			if (focusedHwnd == _pEditView->getHSelf())
+			{
+				if (!_pEditView->hasSelection()) // Ctrl + X: without selected text, it will cut the whole line.
+					_pEditView->execute(SCI_LINECUT);
+				else
+					_pEditView->execute(WM_CUT);
+			}
 			break;
+		}
 
 		case IDM_EDIT_COPY:
-			_pEditView->execute(WM_COPY);
-			checkClipboard();
+		{
+			HWND focusedHwnd = ::GetFocus();
+			if (focusedHwnd == _pEditView->getHSelf())
+			{
+				if (!_pEditView->hasSelection()) // Ctrl + C: without selected text, it will copy the whole line.
+					_pEditView->execute(SCI_LINECOPY);
+				else
+					_pEditView->execute(WM_COPY);
+			}
+			else  // Search result
+			{
+				Finder* finder = _findReplaceDlg.getFinderFrom(focusedHwnd);
+				if (finder)
+					finder->scintillaExecute(WM_COPY);
+			}
+
 			break;
+		}
 
 		case IDM_EDIT_COPY_LINK:
 		{
@@ -442,18 +465,21 @@ void Notepad_plus::command(int id)
 		case IDM_EDIT_PASTE:
 		{
 			std::lock_guard<std::mutex> lock(command_mutex);
-
-			size_t nbSelections = _pEditView->execute(SCI_GETSELECTIONS);
-			Buffer* buf = getCurrentBuffer();
-			bool isRO = buf->isReadOnly();
-			if (nbSelections > 1 && !isRO)
+			HWND focusedHwnd = ::GetFocus();
+			if (focusedHwnd == _pEditView->getHSelf())
 			{
-				bool isPasteDone = _pEditView->pasteToMultiSelection();
-				if (isPasteDone)
-					return;
-			}
+				size_t nbSelections = _pEditView->execute(SCI_GETSELECTIONS);
+				Buffer* buf = getCurrentBuffer();
+				bool isRO = buf->isReadOnly();
+				if (nbSelections > 1 && !isRO)
+				{
+					bool isPasteDone = _pEditView->pasteToMultiSelection();
+					if (isPasteDone)
+						return;
+				}
 
-			_pEditView->execute(SCI_PASTE);
+				_pEditView->execute(SCI_PASTE);
+			}
 		}
 		break;
 
@@ -3813,27 +3839,12 @@ void Notepad_plus::command(int id)
 				return;
 			}
 
-			if (toRTL && (NppParameters::getInstance()).getNppGUI()._writeTechnologyEngine == directWriteTechnology)
-			{
-				_nativeLangSpeaker.messageBox("RTLvsDirectWrite",
-					_pPublicInterface->getHSelf(),
-					TEXT("RTL is not compatible with Direct Write mode. Please disable DirectWrite mode in MISC. section of Preferences dialog, restart Notepad++, and try this command again."),
-					TEXT("Cannot run RTL"),
-					MB_OK | MB_APPLMODAL);
-
-				return;
-			}
-
 			_pEditView->changeTextDirection(toRTL);
-			_pNonEditView->changeTextDirection(toRTL);
 
 			// Wrap then !wrap to fix problem of mirror characters
 			bool isWraped = _pEditView->isWrap();
 			_pEditView->wrap(!isWraped);
 			_pEditView->wrap(isWraped);
-
-			_pNonEditView->wrap(!isWraped);
-			_pNonEditView->wrap(isWraped);
 
 			if (_pDocMap)
 			{

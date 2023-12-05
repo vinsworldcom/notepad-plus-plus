@@ -2119,6 +2119,17 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode, const wch
 
 	int mainIndex2Update = -1;
 
+	// no session
+	if (!session.nbMainFiles() && !session.nbSubFiles())
+	{
+		Buffer* buf = getCurrentBuffer();
+		if (nppParam.getNativeLangSpeaker()->isRTL() && nppParam.getNativeLangSpeaker()->isEditZoneRTL())
+			buf->setRTL(true);
+
+		_mainEditView.changeTextDirection(buf->isRTL());
+		return true;
+	}
+
 	for (size_t i = 0; i < session.nbMainFiles() ; )
 	{
 		const TCHAR *pFn = session._mainViewFiles[i]._fileName.c_str();
@@ -2212,6 +2223,10 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode, const wch
 			if (isSnapshotMode && session._mainViewFiles[i]._backupFilePath != TEXT("") && PathFileExists(session._mainViewFiles[i]._backupFilePath.c_str()))
 				buf->setDirty(true);
 
+			buf->setRTL(session._mainViewFiles[i]._isRTL);
+			if (i == 0 && session._activeMainIndex == 0)
+				_mainEditView.changeTextDirection(buf->isRTL());
+
 			_mainDocTab.setIndividualTabColour(lastOpened, session._mainViewFiles[i]._individualTabColour);
 
 			//Force in the document so we can add the markers
@@ -2255,30 +2270,27 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode, const wch
 			continue;	//skip session files, not supporting recursive sessions or embedded workspace files
 		}
 
-		BufferID clonedBuf = _mainDocTab.findBufferByName(pFn);
-		if (clonedBuf != BUFFER_INVALID)
-		{
-			loadBufferIntoView(clonedBuf, SUB_VIEW);
-			++k;
-			continue;
-		}
 		bool isWow64Off = false;
 		if (!PathFileExists(pFn))
 		{
 			nppParam.safeWow64EnableWow64FsRedirection(FALSE);
 			isWow64Off = true;
 		}
+
 		if (PathFileExists(pFn))
 		{
-			if (isSnapshotMode && session._subViewFiles[k]._backupFilePath != TEXT(""))
-				lastOpened = doOpen(pFn, false, false, session._subViewFiles[k]._encoding, session._subViewFiles[k]._backupFilePath.c_str(), session._subViewFiles[k]._originalFileLastModifTimestamp);
-			else
-				lastOpened = doOpen(pFn, false, false, session._subViewFiles[k]._encoding);
-
 			//check if already open in main. If so, clone
-			if (_mainDocTab.getIndexByBuffer(lastOpened) != -1)
+			BufferID clonedBuf = _mainDocTab.findBufferByName(pFn);
+			if (clonedBuf != BUFFER_INVALID)
 			{
-				loadBufferIntoView(lastOpened, SUB_VIEW);
+				loadBufferIntoView(clonedBuf, SUB_VIEW);
+			}
+			else
+			{
+				if (isSnapshotMode && session._subViewFiles[k]._backupFilePath != TEXT(""))
+					lastOpened = doOpen(pFn, false, false, session._subViewFiles[k]._encoding, session._subViewFiles[k]._backupFilePath.c_str(), session._subViewFiles[k]._originalFileLastModifTimestamp);
+				else
+					lastOpened = doOpen(pFn, false, false, session._subViewFiles[k]._encoding);
 			}
 		}
 		else if (isSnapshotMode && PathFileExists(session._subViewFiles[k]._backupFilePath.c_str()))
@@ -2291,6 +2303,7 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode, const wch
 			if (foundBufID == BUFFER_INVALID)
 				lastOpened = nppGUI._keepSessionAbsentFileEntries ? MainFileManager.newPlaceholderDocument(pFn, SUB_VIEW, userCreatedSessionName) : BUFFER_INVALID;
 		}
+
 		if (isWow64Off)
 		{
 			nppParam.safeWow64EnableWow64FsRedirection(TRUE);
@@ -2339,6 +2352,8 @@ bool Notepad_plus::loadSession(Session & session, bool isSnapshotMode, const wch
 
 			if (isSnapshotMode && session._subViewFiles[k]._backupFilePath != TEXT("") && PathFileExists(session._subViewFiles[k]._backupFilePath.c_str()))
 				buf->setDirty(true);
+
+			buf->setRTL(session._subViewFiles[k]._isRTL);
 
 			_subDocTab.setIndividualTabColour(lastOpened, session._subViewFiles[k]._individualTabColour);
 

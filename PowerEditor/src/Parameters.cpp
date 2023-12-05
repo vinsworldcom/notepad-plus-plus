@@ -97,9 +97,9 @@ static const WinMenuKeyDefinition winKeyDefs[] =
 
 //	{ VK_NULL,    IDM_EDIT_UNDO,                                false, false, false, nullptr },
 //	{ VK_NULL,    IDM_EDIT_REDO,                                false, false, false, nullptr },
-//	{ VK_NULL,    IDM_EDIT_CUT,                                 false, false, false, nullptr },
-//	{ VK_NULL,    IDM_EDIT_COPY,                                false, false, false, nullptr },
-//	{ VK_NULL,    IDM_EDIT_PASTE,                               false, false, false, nullptr },
+	{ VK_X,       IDM_EDIT_CUT,                                 true,  false, false, nullptr },
+	{ VK_C,       IDM_EDIT_COPY,                                true,  false, false, nullptr },
+	{ VK_V,       IDM_EDIT_PASTE,                               true,  false, false, nullptr },
 //	{ VK_NULL,    IDM_EDIT_DELETE,                              false, false, false, nullptr },
 //	{ VK_NULL,    IDM_EDIT_SELECTALL,                           false, false, false, nullptr },
 	{ VK_B,       IDM_EDIT_BEGINENDSELECT,                      true,  false, true,  nullptr },
@@ -468,12 +468,15 @@ static const WinMenuKeyDefinition winKeyDefs[] =
 */
 static const ScintillaKeyDefinition scintKeyDefs[] =
 {
-	{TEXT("SCI_CUT"),                     SCI_CUT,                     true,  false, false, VK_X,        IDM_EDIT_CUT},
-	{TEXT(""),                            SCI_CUT,                     false, false, true,  VK_DELETE,   0},
-	{TEXT("SCI_COPY"),                    SCI_COPY,                    true,  false, false, VK_C,        IDM_EDIT_COPY},
-	{TEXT(""),                            SCI_COPY,                    true,  false, false, VK_INSERT,   0},
-	{TEXT("SCI_PASTE"),                   SCI_PASTE,                   true,  false, false, VK_V,        IDM_EDIT_PASTE},
-	{TEXT(""),                            SCI_PASTE,                   false, false, true,  VK_INSERT,   0},
+    //Scintilla command name,             SCINTILLA_CMD_ID,            Ctrl,  Alt,   Shift, V_KEY,       NOTEPAD++_CMD_ID
+	// -------------------------------------------------------------------------------------------------------------------
+	//
+//	{TEXT("SCI_CUT"),                     SCI_CUT,                     true,  false, false, VK_X,        IDM_EDIT_CUT},
+//	{TEXT(""),                            SCI_CUT,                     false, false, true,  VK_DELETE,   0},
+//	{TEXT("SCI_COPY"),                    SCI_COPY,                    true,  false, false, VK_C,        IDM_EDIT_COPY},
+//	{TEXT(""),                            SCI_COPY,                    true,  false, false, VK_INSERT,   0},
+//	{TEXT("SCI_PASTE"),                   SCI_PASTE,                   true,  false, false, VK_V,        IDM_EDIT_PASTE},
+//	{TEXT(""),                            SCI_PASTE,                   false, false, true,  VK_INSERT,   0},
 	{TEXT("SCI_SELECTALL"),               SCI_SELECTALL,               true,  false, false, VK_A,        IDM_EDIT_SELECTALL},
 	{TEXT("SCI_CLEAR"),                   SCI_CLEAR,                   false, false, false, VK_DELETE,   IDM_EDIT_DELETE},
 	{TEXT("SCI_CLEARALL"),                SCI_CLEARALL,                false, false, false, 0,           0},
@@ -2422,6 +2425,12 @@ bool NppParameters::getSessionFromXmlTree(TiXmlDocument *pSessionDoc, Session& s
 						sfi._individualTabColour = _wtoi(intStrTabColour);
 					}
 
+					const TCHAR* rtlStr = (childNode->ToElement())->Attribute(TEXT("RTL"));
+					if (rtlStr)
+					{
+						sfi._isRTL = _wcsicmp(TEXT("yes"), rtlStr) == 0;
+					}
+
 					for (TiXmlNode *markNode = childNode->FirstChildElement(TEXT("Mark"));
 						markNode;
 						markNode = markNode->NextSibling(TEXT("Mark")))
@@ -3585,6 +3594,7 @@ void NppParameters::writeSession(const Session & session, const TCHAR *fileName)
 				(fileNameNode->ToElement())->SetAttribute(TEXT("originalFileLastModifTimestamp"), static_cast<int32_t>(viewSessionFiles[i]._originalFileLastModifTimestamp.dwLowDateTime));
 				(fileNameNode->ToElement())->SetAttribute(TEXT("originalFileLastModifTimestampHigh"), static_cast<int32_t>(viewSessionFiles[i]._originalFileLastModifTimestamp.dwHighDateTime));
 				(fileNameNode->ToElement())->SetAttribute(TEXT("tabColourId"), static_cast<int32_t>(viewSessionFiles[i]._individualTabColour));
+				(fileNameNode->ToElement())->SetAttribute(TEXT("RTL"), viewSessionFiles[i]._isRTL ? TEXT("yes") : TEXT("no"));
 
 				// docMap 
 				(fileNameNode->ToElement())->SetAttribute(TEXT("mapFirstVisibleDisplayLine"), _i64tot(static_cast<LONGLONG>(viewSessionFiles[i]._mapPos._firstVisibleDisplayLine), szInt64, 10));

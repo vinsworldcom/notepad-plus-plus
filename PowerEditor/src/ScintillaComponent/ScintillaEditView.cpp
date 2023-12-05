@@ -20,6 +20,7 @@
 #include <windowsx.h>
 #include "ScintillaEditView.h"
 #include "Parameters.h"
+#include "localization.h"
 #include "Sorters.h"
 #include "verifySignedfile.h"
 #include "ILexer.h"
@@ -319,8 +320,7 @@ void ScintillaEditView::init(HINSTANCE hInst, HWND hPere)
 	if (hNtdllModule)
 		isWINE = ::GetProcAddress(hNtdllModule, "wine_get_version");
 
-	if (isWINE || // There is a performance issue under WINE when DirectWright is ON, so we turn it off if user uses Notepad++ under WINE
-		isTextDirectionRTL()) // RTL is not compatible with Direct Write Technology
+	if (isWINE) // There is a performance issue under WINE when DirectWright is ON, so we turn it off if user uses Notepad++ under WINE
 		nppGui._writeTechnologyEngine = defaultTechnology;
 
 	if (nppGui._writeTechnologyEngine == directWriteTechnology)
@@ -509,16 +509,6 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 				::SendMessage(_hParent, WM_NOTIFY, LINKTRIGGERED, reinterpret_cast<LPARAM>(&notification));
 
 			}
-			else if (wParam == 'V')
-			{
-				if (_isMultiPasteActive)
-				{
-					Buffer* buf = getCurrentBuffer();
-					buf->setUserReadOnly(false);
-					_isMultiPasteActive = false;
-					::SendMessage(_hParent, NPPM_INTERNAL_CHECKUNDOREDOSTATE, 0, 0);
-				}
-			}
 			break;
 		}
 
@@ -647,51 +637,6 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 
 				}
 
-			}
-			else
-			{
-				//
-				// 2 shortcuts:
-				// Ctrl + C: without selected text, it will copy the whole line.
-				// Ctrl + X: without selected text, it will cut the whole line.
-				//
-				switch (wParam)
-				{
-					case 'C':
-					case 'X':
-					{
-						if ((ctrl & 0x8000) && !(alt & 0x8000) && !(shift & 0x8000))
-						{
-							if (!hasSelection())
-							{
-								execute(wParam == 'C' ? SCI_LINECOPY : SCI_LINECUT);
-								//return TRUE;
-								// No return and let Scintilla procedure to continue
-							}
-						}
-					}
-					break;
-
-					case 'V':
-					{
-						if ((ctrl & 0x8000) && !(alt & 0x8000) && !(shift & 0x8000))
-						{
-							Buffer* buf = getCurrentBuffer();
-							bool isRO = buf->isReadOnly();
-							size_t nbSelections = execute(SCI_GETSELECTIONS);
-							if (nbSelections > 1 && !isRO)
-							{
-								if (pasteToMultiSelection())
-								{
-									// Hack for preventing the char "SYN" (0x16) from being adding into edit zone 
-									buf->setUserReadOnly(true);
-
-									_isMultiPasteActive = true; // It will be set false with WM_KEYUP message
-								}
-							}
-						}
-					}
-				}
 			}
 			break;
 		}
@@ -2282,6 +2227,9 @@ void ScintillaEditView::activateBuffer(BufferID buffer, bool force)
 	const ScintillaViewParams& svp = nppParam.getSVP();
 	int enabledCH = svp._isChangeHistoryEnabled ? (SC_CHANGE_HISTORY_ENABLED | SC_CHANGE_HISTORY_MARKERS) : SC_CHANGE_HISTORY_DISABLED;
 	execute(SCI_SETCHANGEHISTORY, enabledCH);
+
+	if (isTextDirectionRTL() != buffer->isRTL())
+		changeTextDirection(buffer->isRTL());
 
     return;	//all done
 }
@@ -4269,6 +4217,27 @@ bool ScintillaEditView::isTextDirectionRTL() const
 
 void ScintillaEditView::changeTextDirection(bool isRTL)
 {
+	if (isTextDirectionRTL() == isRTL)
+		return;
+
+	NppParameters& nppParamInst = NppParameters::getInstance();
+	if (isRTL && nppParamInst.getNppGUI()._writeTechnologyEngine == directWriteTechnology) // RTL is not compatible with Direct Write Technology
+	{
+		static bool theWarningIsGiven = false;
+
+		if (!theWarningIsGiven)
+		{
+			(nppParamInst.getNativeLangSpeaker())->messageBox("RTLvsDirectWrite",
+				getHSelf(),
+				TEXT("RTL is not compatible with Direct Write mode. Please disable DirectWrite mode in MISC. section of Preferences dialog, and restart Notepad++."),
+				TEXT("Cannot run RTL"),
+				MB_OK | MB_APPLMODAL);
+
+			theWarningIsGiven = true;
+		}
+		return;
+	}
+
 	long exStyle = static_cast<long>(::GetWindowLongPtr(_hSelf, GWL_EXSTYLE));
 	exStyle = isRTL ? (exStyle | WS_EX_LAYOUTRTL) : (exStyle & (~WS_EX_LAYOUTRTL));
 	::SetWindowLongPtr(_hSelf, GWL_EXSTYLE, exStyle);
@@ -4301,6 +4270,9 @@ void ScintillaEditView::changeTextDirection(bool isRTL)
 		execute(SCI_ASSIGNCMDKEY, SCK_LEFT + (SCMOD_CTRL << 16), SCI_WORDLEFT);
 		execute(SCI_ASSIGNCMDKEY, SCK_LEFT + ((SCMOD_SHIFT + SCMOD_CTRL) << 16), SCI_WORDLEFTEXTEND);
 	}
+
+	Buffer* buf = getCurrentBuffer();
+	buf->setRTL(isRTL);
 }
 
 generic_string ScintillaEditView::getEOLString() const
