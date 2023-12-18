@@ -280,6 +280,8 @@ static const WinMenuKeyDefinition winKeyDefs[] =
 //  { VK_NULL,    IDM_VIEW_ZOOMIN,                              false, false, false, nullptr },
 //  { VK_NULL,    IDM_VIEW_ZOOMOUT,                             false, false, false, nullptr },
 //  { VK_NULL,    IDM_VIEW_ZOOMRESTORE,                         false, false, false, nullptr },
+	{ VK_NULL,    IDM_VIEW_GOTO_START,                          false, false, false, nullptr },
+	{ VK_NULL,    IDM_VIEW_GOTO_END,                            false, false, false, nullptr },
 	{ VK_NULL,    IDM_VIEW_GOTO_ANOTHER_VIEW,                   false, false, false, nullptr },
 	{ VK_NULL,    IDM_VIEW_CLONE_TO_ANOTHER_VIEW,               false, false, false, nullptr },
 	{ VK_NULL,    IDM_VIEW_GOTO_NEW_INSTANCE,                   false, false, false, nullptr },
@@ -294,6 +296,8 @@ static const WinMenuKeyDefinition winKeyDefs[] =
 	{ VK_NUMPAD7, IDM_VIEW_TAB7,                                true,  false, false, nullptr },
 	{ VK_NUMPAD8, IDM_VIEW_TAB8,                                true,  false, false, nullptr },
 	{ VK_NUMPAD9, IDM_VIEW_TAB9,                                true,  false, false, nullptr },
+	{ VK_NULL,    IDM_VIEW_TAB_START,                           false, false, false, nullptr },
+	{ VK_NULL,    IDM_VIEW_TAB_END,                             false, false, false, nullptr },
 	{ VK_NEXT,    IDM_VIEW_TAB_NEXT,                            true,  false, false, nullptr },
 	{ VK_PRIOR,   IDM_VIEW_TAB_PREV,                            true,  false, false, nullptr },
 	{ VK_NEXT,    IDM_VIEW_TAB_MOVEFORWARD,                     true,  false, true,  nullptr },
@@ -1593,7 +1597,11 @@ bool NppParameters::load()
 
 
 	std::wstring filePath, filePath2, issueFileName;
-
+	//-------------------------------------------------------------//
+	// nppLogNetworkDriveIssue.xml                                 //
+	// This empty xml file is optional - user adds this empty file //
+	// It's for debugging use only                                 //
+	//-------------------------------------------------------------//
 	filePath = _nppPath;
 	issueFileName = nppLogNetworkDriveIssue;
 	issueFileName += TEXT(".xml");
@@ -1606,6 +1614,11 @@ bool NppParameters::load()
 		_doNppLogNetworkDriveIssue = (PathFileExists(filePath2.c_str()) == TRUE);
 	}
 
+	//-------------------------------------------------------------//
+	// nppLogNulContentCorruptionIssue.xml                         //
+	// This empty xml file is optional - user adds this empty file //
+	// It's for debugging use only                                 //
+	//-------------------------------------------------------------//
 	filePath = _nppPath;
 	issueFileName = nppLogNulContentCorruptionIssue;
 	issueFileName += TEXT(".xml");
@@ -1633,6 +1646,35 @@ bool NppParameters::load()
 		filePath = _userPath;
 		pathAppend(filePath, noRegForOSAppRestartTrigger);
 		_isRegForOSAppRestartDisabled = (::PathFileExists(filePath.c_str()) == TRUE);
+	}
+
+
+	//-------------------------------------------------------------//
+	// noColumnToMultiSelect.xml                                   //
+	// This empty xml file is optional - user adds this empty file //
+	// manually in order to prevent Notepad++ transform column     //
+	// selection into multi-select.                                //
+	//-------------------------------------------------------------//
+	std::wstring disableColumn2MultiSelectPath = _userPath;
+	pathAppend(disableColumn2MultiSelectPath, TEXT("noColumnToMultiSelect.xml"));
+
+	if (PathFileExists(disableColumn2MultiSelectPath.c_str()))
+	{
+		_column2MultiSelect = false;
+	}
+
+	//-------------------------------------------------------------//
+	// disableHardCodedShiftDelete.xml                             //
+	// This empty xml file is optional - user adds this empty file //
+	// manually in order to prevent hard coded Shift-DEL shortcut  //
+	// delete whole line while no selection.                       //
+	//-------------------------------------------------------------//
+	std::wstring disableHardCodedShiftDeletePath = _userPath;
+	pathAppend(disableHardCodedShiftDeletePath, TEXT("disableHardCodedShiftDelete.xml"));
+
+	if (PathFileExists(disableHardCodedShiftDeletePath.c_str()))
+	{
+		_useHardCodedShiftDelete = false;
 	}
 
 	return isAllLaoded;

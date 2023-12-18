@@ -1072,6 +1072,14 @@ void Notepad_plus::command(int id)
 		}
 		break;
 
+		case IDM_VIEW_TAB_START:
+		case IDM_VIEW_TAB_END:
+		{
+			size_t index = id == IDM_VIEW_TAB_START ? 0 : _pDocTab->nbItem() - 1;
+			switchToFile(_pDocTab->getBufferByIndex(index));
+		}
+		break;
+
 		case IDM_VIEW_TAB_NEXT:
 		{
 			const int current_index = _pDocTab->getCurrentTabIndex();
@@ -3239,6 +3247,14 @@ void Notepad_plus::command(int id)
             break;
         }
 
+        case IDM_VIEW_GOTO_START:
+			_pDocTab->currentTabToStart();
+			break;
+
+        case IDM_VIEW_GOTO_END:
+			_pDocTab->currentTabToEnd();
+			break;
+
         case IDM_VIEW_GOTO_ANOTHER_VIEW:
             docGotoAnotherEditView(TransferMove);
 			checkSyncState();
@@ -4258,7 +4274,12 @@ void Notepad_plus::command(int id)
 			case IDM_VIEW_UNFOLD_6:
 			case IDM_VIEW_UNFOLD_7:
 			case IDM_VIEW_UNFOLD_8:
+			case IDM_VIEW_GOTO_START:
+			case IDM_VIEW_GOTO_END:
 			case IDM_VIEW_GOTO_ANOTHER_VIEW:
+			case IDM_VIEW_CLONE_TO_ANOTHER_VIEW:
+			case IDM_VIEW_GOTO_NEW_INSTANCE:
+			case IDM_VIEW_LOAD_IN_NEW_INSTANCE:
 			case IDM_VIEW_SYNSCROLLV:
 			case IDM_VIEW_SYNSCROLLH:
 			case IDM_VIEW_TAB1:

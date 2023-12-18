@@ -388,6 +388,8 @@
     #define    IDM_VIEW_TAB_COLOUR_3              (IDM_VIEW + 113)
     #define    IDM_VIEW_TAB_COLOUR_4              (IDM_VIEW + 114)
     #define    IDM_VIEW_TAB_COLOUR_5              (IDM_VIEW + 115)
+    #define    IDM_VIEW_TAB_START                 (IDM_VIEW + 116)
+    #define    IDM_VIEW_TAB_END                   (IDM_VIEW + 117)
 
     #define    IDM_VIEW_NPC                       (IDM_VIEW + 130)
     #define    IDM_VIEW_NPC_CCUNIEOL              (IDM_VIEW + 131)
@@ -396,7 +398,8 @@
     #define    IDM_VIEW_CLONE_TO_ANOTHER_VIEW    10002
     #define    IDM_VIEW_GOTO_NEW_INSTANCE        10003
     #define    IDM_VIEW_LOAD_IN_NEW_INSTANCE     10004
-
+    #define    IDM_VIEW_GOTO_START               10005
+    #define    IDM_VIEW_GOTO_END                 10006
 
 #define    IDM_FORMAT    (IDM + 5000)
     #define    IDM_FORMAT_TODOS             (IDM_FORMAT + 1)
