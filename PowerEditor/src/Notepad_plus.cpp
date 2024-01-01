@@ -1287,7 +1287,15 @@ bool Notepad_plus::replaceInOpenedFiles()
 	{
 		for (size_t i = 0, len = _subDocTab.nbItem(); i < len; ++i)
 		{
-			pBuf = MainFileManager.getBufferByID(_subDocTab.getBufferByIndex(i));
+			BufferID bufId = _subDocTab.getBufferByIndex(i);
+
+			if (_mainDocTab.getIndexByBuffer(bufId) != -1)
+			{
+				// cloned doc, replacements already done in main doc
+				continue;
+			}
+
+			pBuf = MainFileManager.getBufferByID(bufId);
 			if (pBuf->isReadOnly())
 				continue;
 			_invisibleEditView.execute(SCI_SETDOCPOINTER, 0, pBuf->getDocument());
@@ -4309,7 +4317,7 @@ void Notepad_plus::dropFiles(HDROP hdrop)
 		HWND hWin = ::ChildWindowFromPointEx(_pPublicInterface->getHSelf(), p, CWP_SKIPINVISIBLE);
 		if (!hWin) return;
 
-		if ((_subEditView.getHSelf() == hWin) || (_subDocTab.getHSelf() == hWin))
+		if ((_subEditView.getHSelf() == hWin) || (_subDocTab.getHSelf() == hWin) || currentView() == SUB_VIEW)
 			switchEditViewTo(SUB_VIEW);
 		else
 			switchEditViewTo(MAIN_VIEW);
@@ -4899,13 +4907,6 @@ bool Notepad_plus::activateBuffer(BufferID id, int whichOne, bool forceApplyHili
 
 	notifyBufferActivated(id, whichOne);
 
-	bool isCurrBuffDetection = (nppGui._fileAutoDetection & cdEnabledNew) ? true : false;
-	if (!reload && isCurrBuffDetection)
-	{
-		// Buffer has been activated, now check for file modification
-		// If enabled for current buffer
-		pBuf->checkFileState();
-	}
 	return true;
 }
 
@@ -6654,6 +6655,16 @@ void Notepad_plus::notifyBufferActivated(BufferID bufid, int view)
 	if (_pFuncList && (!_pFuncList->isClosed()) && _pFuncList->isVisible())
 	{
 		_pFuncList->reload();
+	}
+
+	NppGUI& nppGui = NppParameters::getInstance().getNppGUI();
+	bool isCurrBuffDetection = (nppGui._fileAutoDetection & cdEnabledNew) ? true : false;
+	bool reload = buf->getNeedReload();
+	if (!reload && isCurrBuffDetection)
+	{
+		// Buffer has been activated, now check for file modification
+		// If enabled for current buffer
+		buf->checkFileState();
 	}
 
 	_linkTriggered = true;

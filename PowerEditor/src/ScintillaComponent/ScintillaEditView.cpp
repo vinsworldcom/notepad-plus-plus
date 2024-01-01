@@ -525,7 +525,7 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 			SHORT shift = GetKeyState(VK_SHIFT);
 			bool isColumnSelection = (execute(SCI_GETSELECTIONMODE) == SC_SEL_RECTANGLE) || (execute(SCI_GETSELECTIONMODE) == SC_SEL_THIN);
 			bool column2MultSelect = (NppParameters::getInstance()).doColumn2MultiSelect();
-			bool useHardCodedShiftDelete = (NppParameters::getInstance()).useHardCodedShiftDelete();
+			bool useHardCodedShiftDelete = (NppParameters::getInstance()).useLineCopyCutDelete();
 
 			if (wParam == VK_DELETE)
 			{
@@ -558,17 +558,17 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 								size_t docLen = getCurrentDocLen();
 
 								char eolStr[3];
-								Sci_TextRange tr;
+								Sci_TextRangeFull tr;
 								tr.chrg.cpMin = posStart;
 								tr.chrg.cpMax = posEnd + 2;
-								if (tr.chrg.cpMax > static_cast<Sci_PositionCR>(docLen))
+								if (tr.chrg.cpMax > static_cast<Sci_Position>(docLen))
 								{
 									tr.chrg.cpMax = docLen;
 								}
 								tr.lpstrText = eolStr;
 
 								if (tr.chrg.cpMin != tr.chrg.cpMax)
-									execute(SCI_GETTEXTRANGE, 0, reinterpret_cast<LPARAM>(&tr));
+									execute(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<LPARAM>(&tr));
 
 								// Remember EOL length
 								// in the case of other characters let Scintilla do its job
