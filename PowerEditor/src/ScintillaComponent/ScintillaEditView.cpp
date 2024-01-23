@@ -525,19 +525,10 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 			SHORT shift = GetKeyState(VK_SHIFT);
 			bool isColumnSelection = (execute(SCI_GETSELECTIONMODE) == SC_SEL_RECTANGLE) || (execute(SCI_GETSELECTIONMODE) == SC_SEL_THIN);
 			bool column2MultSelect = (NppParameters::getInstance()).doColumn2MultiSelect();
-			bool useHardCodedShiftDelete = (NppParameters::getInstance()).useLineCopyCutDelete();
 
 			if (wParam == VK_DELETE)
 			{
-				// 1 shortcut:
-				// Shift + Delete: without selected text, it will delete the whole line.
-				//
-				if ((shift & 0x8000) && !(ctrl & 0x8000) && !(alt & 0x8000) && !hasSelection() && useHardCodedShiftDelete) // Shift-DEL & no selection
-				{
-					execute(SCI_LINEDELETE);
-					return TRUE;
-				}
-				else if (!(shift & 0x8000) && !(ctrl & 0x8000) && !(alt & 0x8000)) // DEL & Multi-edit
+				if (!(shift & 0x8000) && !(ctrl & 0x8000) && !(alt & 0x8000)) // DEL & Multi-edit
 				{
 					size_t nbSelections = execute(SCI_GETSELECTIONS);
 					if (nbSelections > 1) // Multi-edit
@@ -592,17 +583,20 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 						if (nbCaseForScint)
 							_callWindowProc(_scintillaDefaultProc, hwnd, Message, wParam, lParam);
 
-						// then do our job, if any
-						for (const auto& i : edgeOfEol)
+						// then do our job, if it's not column mode
+						if (!isColumnSelection)
 						{
-							// because the current caret modification will change the other caret positions,
-							// so we get them dynamically in the loop.
-							LRESULT posStart = execute(SCI_GETSELECTIONNSTART, i._selIndex);
-							LRESULT posEnd = execute(SCI_GETSELECTIONNEND, i._selIndex);
+							for (const auto& i : edgeOfEol)
+							{
+								// because the current caret modification will change the other caret positions,
+								// so we get them dynamically in the loop.
+								LRESULT posStart = execute(SCI_GETSELECTIONNSTART, i._selIndex);
+								LRESULT posEnd = execute(SCI_GETSELECTIONNEND, i._selIndex);
 
-							replaceTarget(L"", posStart, posEnd + i._len2remove);
-							execute(SCI_SETSELECTIONNSTART, i._selIndex, posStart);
-							execute(SCI_SETSELECTIONNEND, i._selIndex, posStart);
+								replaceTarget(L"", posStart, posEnd + i._len2remove);
+								execute(SCI_SETSELECTIONNSTART, i._selIndex, posStart);
+								execute(SCI_SETSELECTIONNEND, i._selIndex, posStart);
+							}
 						}
 
 						execute(SCI_ENDUNDOACTION);

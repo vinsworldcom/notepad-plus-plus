@@ -587,7 +587,7 @@ struct LangMenuItem final
 	LangMenuItem(LangType lt, int cmdID = 0, const std::wstring& langName = TEXT("")):
 	_langType(lt), _cmdID(cmdID), _langName(langName){};
 
-	bool operator<(const LangMenuItem& rhs)
+	bool operator<(const LangMenuItem& rhs) const
 	{
 		std::wstring lhs_lang(this->_langName.length(), ' '), rhs_lang(rhs._langName.length(), ' ');
 		std::transform(this->_langName.begin(), this->_langName.end(), lhs_lang.begin(), towlower);
@@ -1603,7 +1603,6 @@ public:
 	bool isRemappingShortcut() const {return _shortcuts.size() != 0;};
 
 	std::vector<CommandShortcut> & getUserShortcuts() { return _shortcuts; };
-	std::vector<size_t> & getUserModifiedShortcuts() { return _customizedShortcuts; };
 	void addUserModifiedIndex(size_t index);
 
 	std::vector<MacroShortcut> & getMacroList() { return _macros; };
@@ -2017,6 +2016,7 @@ private:
 
 	void getActions(TiXmlNodeA *node, Macro & macro);
 	bool getShortcuts(TiXmlNodeA *node, Shortcut & sc, std::string* folderName = nullptr);
+	bool getInternalCommandShortcuts(TiXmlNodeA* node, CommandShortcut& cs, std::string* folderName = nullptr);
 
 	void writeStyle2Element(const Style & style2Write, Style & style2Sync, TiXmlElement *element);
 	void insertUserLang2Tree(TiXmlNode *node, UserLangContainer *userLang);

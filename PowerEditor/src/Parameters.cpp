@@ -84,9 +84,16 @@ static const WinMenuKeyDefinition winKeyDefs[] =
 
 //	{ VK_NULL,    IDM_EDIT_UNDO,                                false, false, false, nullptr },
 //	{ VK_NULL,    IDM_EDIT_REDO,                                false, false, false, nullptr },
+
+	{ VK_DELETE,  IDM_EDIT_CUT,                                 false, false, true,  nullptr },
 	{ VK_X,       IDM_EDIT_CUT,                                 true,  false, false, nullptr },
+
+	{ VK_INSERT,  IDM_EDIT_COPY,                                true,  false, false, nullptr },
 	{ VK_C,       IDM_EDIT_COPY,                                true,  false, false, nullptr },
+
+	{ VK_INSERT,  IDM_EDIT_PASTE,                               false, false, true,  nullptr },
 	{ VK_V,       IDM_EDIT_PASTE,                               true,  false, false, nullptr },
+
 //	{ VK_NULL,    IDM_EDIT_DELETE,                              false, false, false, nullptr },
 //	{ VK_NULL,    IDM_EDIT_SELECTALL,                           false, false, false, nullptr },
 	{ VK_B,       IDM_EDIT_BEGINENDSELECT,                      true,  false, true,  nullptr },
@@ -472,11 +479,12 @@ static const ScintillaKeyDefinition scintKeyDefs[] =
     //Scintilla command name,             SCINTILLA_CMD_ID,            Ctrl,  Alt,   Shift, V_KEY,       NOTEPAD++_CMD_ID
 	// -------------------------------------------------------------------------------------------------------------------
 	//
-//	{TEXT("SCI_CUT"),                     SCI_CUT,                     false, false, true,  VK_DELETE,   0},
-//	{TEXT("SCI_COPY"),                    SCI_COPY,                    true,  false, false, VK_INSERT,   0},
-//	{TEXT("SCI_PASTE"),                   SCI_PASTE,                   false, false, true,  VK_INSERT,   0},
-//	the above 3 shortcuts will be added dynamically if "disableLineCopyCutDelete.xml" is present.
-
+	//{TEXT("SCI_CUT"),                     SCI_CUT,                     true,  false, false, VK_X,        IDM_EDIT_CUT},
+	//{TEXT(""),                            SCI_CUT,                     false, false, true,  VK_DELETE,   0},
+	//{TEXT("SCI_COPY"),                    SCI_COPY,                    true,  false, false, VK_C,        IDM_EDIT_COPY},
+	//{TEXT(""),                            SCI_COPY,                    true,  false, false, VK_INSERT,   0},
+	//{TEXT("SCI_PASTE"),                   SCI_PASTE,                   true,  false, false, VK_V,        IDM_EDIT_PASTE},
+	//{TEXT("SCI_PASTE"),                   SCI_PASTE,                   false, false, true,  VK_INSERT,   IDM_EDIT_PASTE},
 	{TEXT("SCI_SELECTALL"),               SCI_SELECTALL,               true,  false, false, VK_A,        IDM_EDIT_SELECTALL},
 	{TEXT("SCI_CLEAR"),                   SCI_CLEAR,                   false, false, false, VK_DELETE,   IDM_EDIT_DELETE},
 	{TEXT("SCI_CLEARALL"),                SCI_CLEARALL,                false, false, false, 0,           0},
@@ -1476,35 +1484,6 @@ bool NppParameters::load()
 		isAllLaoded = false;
 	}
 
-
-	//-----------------------------------------------------------------------------------//
-	// disableLineCopyCutDelete.xml                                                      //
-	// This empty xml file is optional - user adds this empty file manually to :         //
-	// 1. prevent hard coded Shift-DEL shortcut deletes whole line while no selection.   //
-	// 2. prevent Copy command (Ctrl-C) copies whole line (without selection).           //
-	// 3. prevent Cut command (Ctrl-X) cuts whole line (without selection).              //
-	// 4. add SCI_CUT (Shift-DEL), SCI_COPY (Ctrl-INS) & SCI_PASTE (Shift-INS) shortcuts //
-	//-----------------------------------------------------------------------------------//
-	std::wstring disableLineCopyCutDeletePath = _userPath;
-	pathAppend(disableLineCopyCutDeletePath, TEXT("disableLineCopyCutDelete.xml"));
-
-	if (PathFileExists(disableLineCopyCutDeletePath.c_str()))
-	{
-		_useLineCopyCutDelete = false;
-		
-		//
-		// Add back SCI_CUT (Shift-DEL), SCI_COPY (Ctrl-INS) & SCI_PASTE (Shift-INS) shortcuts
-		//
-		ScintillaKeyMap sci_cut = ScintillaKeyMap(Shortcut("SCI_CUT", false, false, true, static_cast<unsigned char>(VK_DELETE)), SCI_CUT, 0);
-		_scintillaKeyCommands.push_back(sci_cut);
-
-		ScintillaKeyMap sci_copy = ScintillaKeyMap(Shortcut("SCI_COPY", true, false, false, static_cast<unsigned char>(VK_INSERT)), SCI_COPY, 0);
-		_scintillaKeyCommands.push_back(sci_copy);
-
-		ScintillaKeyMap sci_paste = ScintillaKeyMap(Shortcut("SCI_PASTE", false, false, true, static_cast<unsigned char>(VK_INSERT)), SCI_PASTE, 0);
-		_scintillaKeyCommands.push_back(sci_paste);
-	}
-
 	//------------------------------//
 	// shortcuts.xml : for per user //
 	//------------------------------//
@@ -2103,11 +2082,13 @@ void NppParameters::initMenuKeys()
 {
 	int nbCommands = sizeof(winKeyDefs)/sizeof(WinMenuKeyDefinition);
 	WinMenuKeyDefinition wkd;
+	int previousFuncID = 0;
 	for (int i = 0; i < nbCommands; ++i)
 	{
 		wkd = winKeyDefs[i];
 		Shortcut sc((wkd.specialName ? wstring2string(wkd.specialName, CP_UTF8).c_str() : ""), wkd.isCtrl, wkd.isAlt, wkd.isShift, static_cast<unsigned char>(wkd.vKey));
-		_shortcuts.push_back( CommandShortcut(sc, wkd.functionId) );
+		_shortcuts.push_back( CommandShortcut(sc, wkd.functionId, previousFuncID == wkd.functionId) );
+		previousFuncID = wkd.functionId;
 	}
 }
 
@@ -2860,12 +2841,15 @@ void NppParameters::feedShortcut(TiXmlNodeA *node)
 		{
 			//find the commandid that matches this Shortcut sc and alter it, push back its index in the modified list, if not present
 			size_t len = _shortcuts.size();
-			for (size_t i = 0; i < len; ++i)
+			bool isFound = false;
+			for (size_t i = 0; i < len, !isFound; ++i)
 			{
 				if (_shortcuts[i].getID() == (unsigned long)id)
 				{	//found our match
-					getShortcuts(childNode, _shortcuts[i]);
-					addUserModifiedIndex(i);
+					isFound = getInternalCommandShortcuts(childNode, _shortcuts[i]);
+
+					if (isFound)
+						addUserModifiedIndex(i);
 				}
 			}
 		}
@@ -3052,6 +3036,52 @@ void NppParameters::feedScintKeys(TiXmlNodeA *node)
 	}
 }
 
+bool NppParameters::getInternalCommandShortcuts(TiXmlNodeA *node, CommandShortcut & cs, string* folderName)
+{
+	if (!node) return false;
+
+	const char* name = (node->ToElement())->Attribute("name");
+	if (!name)
+		name = "";
+
+	bool isCtrl = false;
+	const char* isCtrlStr = (node->ToElement())->Attribute("Ctrl");
+	if (isCtrlStr)
+		isCtrl = (strcmp("yes", isCtrlStr) == 0);
+
+	bool isAlt = false;
+	const char* isAltStr = (node->ToElement())->Attribute("Alt");
+	if (isAltStr)
+		isAlt = (strcmp("yes", isAltStr) == 0);
+
+	bool isShift = false;
+	const char* isShiftStr = (node->ToElement())->Attribute("Shift");
+	if (isShiftStr)
+		isShift = (strcmp("yes", isShiftStr) == 0);
+
+	int key;
+	const char* keyStr = (node->ToElement())->Attribute("Key", &key);
+	if (!keyStr)
+		return false;
+
+	int nth = -1; // 0 based
+	const char* nthStr = (node->ToElement())->Attribute("nth", &nth);
+	if (nthStr && nth == 1)
+	{
+		if (cs.getNth() != nth)
+			return false;
+	}
+		
+	if (folderName)
+	{
+		const char* fn = (node->ToElement())->Attribute("FolderName");
+		*folderName = fn ? fn : "";
+	}
+
+	cs = Shortcut(name, isCtrl, isAlt, isShift, static_cast<unsigned char>(key));
+	return true;
+}
+
 bool NppParameters::getShortcuts(TiXmlNodeA *node, Shortcut & sc, string* folderName)
 {
 	if (!node) return false;
@@ -3079,6 +3109,7 @@ bool NppParameters::getShortcuts(TiXmlNodeA *node, Shortcut & sc, string* folder
 	const char* keyStr = (node->ToElement())->Attribute("Key", &key);
 	if (!keyStr)
 		return false;
+
 
 	if (folderName)
 	{
@@ -3479,6 +3510,8 @@ void NppParameters::insertCmd(TiXmlNodeA *shortcutsRoot, const CommandShortcut &
 	sc->ToElement()->SetAttribute("Alt", key._isAlt?"yes":"no");
 	sc->ToElement()->SetAttribute("Shift", key._isShift?"yes":"no");
 	sc->ToElement()->SetAttribute("Key", key._key);
+	if (cmd.getNth() != 0)
+		sc->ToElement()->SetAttribute("nth", cmd.getNth());
 }
 
 
