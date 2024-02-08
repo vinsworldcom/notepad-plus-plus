@@ -682,7 +682,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			BufferID id = MainFileManager.getBufferFromName(longNameFullpath);
 			if (id != BUFFER_INVALID)
 				doReload(id, wParam != 0);
-			break;
+			
+			return TRUE;
 		}
 
 		case NPPM_SWITCHTOFILE :
@@ -1064,11 +1065,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			constexpr int strSize = CURRENTWORD_MAXLENGTH;
 			TCHAR str[strSize]{};
-			TCHAR strLine[strSize]{};
-			size_t lineNumber = 0;
-			intptr_t col = 0;
 			int hasSlash = 0;
-			TCHAR *pTchar = reinterpret_cast<TCHAR *>(lParam);
 
 			_pEditView->getGenericSelectedText(str, strSize); // this is either the selected text, or the word under the cursor if there is no selection
 			hasSlash = FALSE;
@@ -1082,9 +1079,12 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				intptr_t start = 0;
 				intptr_t end = 0;
 				const TCHAR *delimiters;
+				TCHAR strLine[strSize]{};
+				size_t lineNumber = 0;
+				intptr_t col = 0;
 
 				lineNumber = _pEditView->getCurrentLineNumber();
-				col = _pEditView->getCurrentColumnNumber();
+				col = _pEditView->execute(SCI_GETCURRENTPOS) - _pEditView->execute(SCI_POSITIONFROMLINE, lineNumber);
 				_pEditView->getLine(lineNumber, strLine, strSize);
 
 				// find the start
@@ -1109,6 +1109,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			}
 			else //buffer large enough, perform safe copy
 			{
+				TCHAR* pTchar = reinterpret_cast<TCHAR*>(lParam);
 				lstrcpyn(pTchar, str, static_cast<int32_t>(wParam));
 				return TRUE;
 			}
@@ -1157,7 +1158,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			else if (_pEditView == &_subEditView)
 				*id = SUB_VIEW;
 			else
-				*id = -1;
+				*id = -1; // cannot happen
 			return TRUE;
 		}
 
@@ -1667,7 +1668,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
-		case NPPM_DESTROYSCINTILLAHANDLE:
+		case NPPM_DESTROYSCINTILLAHANDLE_DEPRECATED:
 		{
 			//return _scintillaCtrls4Plugins.destroyScintilla(reinterpret_cast<HWND>(lParam));
 
@@ -2068,7 +2069,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			int i;
 
-			if (lParam == SUB_VIEW)
+			if (lParam == SUB_VIEW) // priorityView is sub view, so we search in sub view firstly
 			{
 				if ((i = _subDocTab.getIndexByBuffer((BufferID)wParam)) != -1)
 				{
@@ -2076,6 +2077,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					view <<= 30;
 					return view|i;
 				}
+
 				if ((i = _mainDocTab.getIndexByBuffer((BufferID)wParam)) != -1)
 				{
 					long view = MAIN_VIEW;
@@ -2083,7 +2085,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					return view|i;
 				}
 			}
-			else
+			else // (lParam == SUB_VIEW): priorityView is main view, so we search in main view firstly
 			{
 				if ((i = _mainDocTab.getIndexByBuffer((BufferID)wParam)) != -1)
 				{
@@ -2091,6 +2093,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					view <<= 30;
 					return view|i;
 				}
+
 				if ((i = _subDocTab.getIndexByBuffer((BufferID)wParam)) != -1)
 				{
 					long view = SUB_VIEW;
@@ -2280,6 +2283,25 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			checkClipboard();
 			checkUndoState();
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_LINECUTCOPYWITHOUTSELECTION:
+		{
+			if (nppParam.getSVP()._lineCopyCutWithoutSelection) // "Disable Copy Cut Line Without Selection" is just unchecked: From NOT using it to using this feature
+			{
+				// Enable Copy & Cut unconditionally
+				enableCommand(IDM_EDIT_CUT, true, MENU | TOOLBAR);
+				enableCommand(IDM_EDIT_COPY, true, MENU | TOOLBAR);
+
+			}
+			else // "Disable Copy Cut Line Without Selection" is just checked: From using this feature to NOT using it
+			{
+				// Check the current selection to disable/enable Copy & Cut
+				bool hasSelection = _pEditView->hasSelection();
+				enableCommand(IDM_EDIT_CUT, hasSelection, MENU | TOOLBAR);
+				enableCommand(IDM_EDIT_COPY, hasSelection, MENU | TOOLBAR);
+			}
 			return TRUE;
 		}
 
@@ -2913,7 +2935,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return _pluginsManager.relayPluginMessages(message, wParam, lParam);
 		}
 
-		case NPPM_ALLOCATESUPPORTED:
+		case NPPM_ALLOCATESUPPORTED_DEPRECATED:
 		{
 			return TRUE;
 		}
