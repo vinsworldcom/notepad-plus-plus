@@ -1904,6 +1904,14 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
+		case NPPM_INTERNAL_SETMULTISELCTION:
+		{
+			ScintillaViewParams& svp = const_cast<ScintillaViewParams&>(nppParam.getSVP());
+			_mainEditView.execute(SCI_SETMULTIPLESELECTION, svp._multiSelection);
+			_subEditView.execute(SCI_SETMULTIPLESELECTION, svp._multiSelection);
+			return TRUE;
+		}
+
 		case NPPM_INTERNAL_SETCARETBLINKRATE:
 		{
 			const NppGUI & nppGUI = nppParam.getNppGUI();
@@ -3505,6 +3513,16 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			generic_string path = buf ? buf->getFullPathName() : _T("");
 			PathRemoveFileSpec(path);
 			setWorkingDir(path.c_str());
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_DOCMODIFIEDBYREPLACEALL:
+		{
+			SCNotification scnN{};
+			scnN.nmhdr.code = NPPN_GLOBALMODIFIED;
+			scnN.nmhdr.hwndFrom = reinterpret_cast<void*>(wParam);
+			scnN.nmhdr.idFrom = 0;
+			_pluginsManager.notify(&scnN);
 			return TRUE;
 		}
 

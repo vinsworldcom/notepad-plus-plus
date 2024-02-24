@@ -2816,7 +2816,11 @@ int FindReplaceDlg::processAll(ProcessOperation op, const FindOption *opt, bool 
 	// Turn ON the notifications after operations
 	(*_ppEditView)->execute(SCI_SETMODEVENTMASK, notifFlag);
 	if (op == ProcessReplaceAll && nbProcessed > 0) // All the notification of modification (SCN_MODIFIED) were removed during the operations, so we set modified status true here
-		(*_ppEditView)->getCurrentBuffer()->setModifiedStatus(true);
+	{
+		Buffer* buf = (*_ppEditView)->getCurrentBuffer();
+		buf->setModifiedStatus(true);
+		::SendMessage(_hParent, NPPM_INTERNAL_DOCMODIFIEDBYREPLACEALL, reinterpret_cast<WPARAM>(buf), 0);
+	}
 
 
 	if (nbProcessed == FIND_INVALID_REGULAR_EXPRESSION)
@@ -4750,7 +4754,7 @@ void Finder::addSearchResultInfo(int count, int countSearched, bool searchedEnti
 
 		generic_string hitsIn = count == 1 ? TEXT("hit") : TEXT("hits");
 
-		generic_string fileOrSelection = searchedEntireNotSelection ? TEXT("file") : TEXT("selection");;
+		generic_string fileOrSelection = searchedEntireNotSelection ? TEXT("file") : TEXT("selection");
 		if (_nbFoundFiles != 1)
 		{
 			fileOrSelection += TEXT("s");
