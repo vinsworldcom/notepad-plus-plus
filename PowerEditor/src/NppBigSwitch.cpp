@@ -19,6 +19,7 @@
 #include <shlwapi.h>
 #include <uxtheme.h> // for EnableThemeDialogTexture
 #include <format>
+#include <Windowsx.h> // for GET_X_LPARAM, GET_Y_LPARAM
 #include "Notepad_plus_Window.h"
 #include "TaskListDlg.h"
 #include "ImageListSet.h"
@@ -1904,6 +1905,14 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
+		case NPPM_INTERNAL_SETMULTISELCTION:
+		{
+			ScintillaViewParams& svp = const_cast<ScintillaViewParams&>(nppParam.getSVP());
+			_mainEditView.execute(SCI_SETMULTIPLESELECTION, svp._multiSelection);
+			_subEditView.execute(SCI_SETMULTIPLESELECTION, svp._multiSelection);
+			return TRUE;
+		}
+
 		case NPPM_INTERNAL_SETCARETBLINKRATE:
 		{
 			const NppGUI & nppGUI = nppParam.getNppGUI();
@@ -1959,20 +1968,34 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			}
 			else
 			{
-				if ((HWND(wParam) == _mainEditView.getHSelf()) || (HWND(wParam) == _subEditView.getHSelf()))
+				HWND activeViewHwnd = reinterpret_cast<HWND>(wParam);
+
+				if ((activeViewHwnd == _mainEditView.getHSelf()) || (activeViewHwnd == _subEditView.getHSelf()))
 				{
-					if ((HWND(wParam) == _mainEditView.getHSelf()))
+					if (activeViewHwnd == _mainEditView.getHSelf())
 						switchEditViewTo(MAIN_VIEW);
 					else
 						switchEditViewTo(SUB_VIEW);
 
-					POINT p;
-					::GetCursorPos(&p);
 					ContextMenu scintillaContextmenu;
+					
 					std::vector<MenuItemUnit>& tmp = nppParam.getContextMenuItems();
 					bool copyLink = (_pEditView->getSelectedTextCount() == 0) && _pEditView->getIndicatorRange(URL_INDIC);
 					scintillaContextmenu.create(hwnd, tmp, _mainMenuHandle, copyLink);
+					
+					POINT p;
+					p.x = GET_X_LPARAM(lParam);
+					p.y = GET_Y_LPARAM(lParam);
+					if ((p.x == -1) && (p.y == -1))
+					{
+						// context menu activated via keyboard; pop up at text caret position
+						auto caretPos = _pEditView->execute(SCI_GETCURRENTPOS);
+						p.x = static_cast<LONG>(_pEditView->execute(SCI_POINTXFROMPOSITION, 0, caretPos));
+						p.y = static_cast<LONG>(_pEditView->execute(SCI_POINTYFROMPOSITION, 0, caretPos));
+						::ClientToScreen(activeViewHwnd, &p);
+					}
 					scintillaContextmenu.display(p);
+
 					return TRUE;
 				}
 			}
@@ -2572,6 +2595,15 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					_pluginsManager.notify(&scnN);
 					if (isSnapshotMode)
 						::LockWindowUpdate(NULL);
+
+					if (!::IsWindowVisible(hwnd))
+					{
+						// Notepad++ probably has not been restored from the systray
+						// - as its tray-icon was removed before, we have to show the app window otherwise we end up with no-GUI state
+						::ShowWindow(hwnd, SW_SHOW);
+						::SendMessage(hwnd, WM_SIZE, 0, 0);
+					}
+
 					return 0; // abort quitting
 				}
 
@@ -3505,6 +3537,16 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			generic_string path = buf ? buf->getFullPathName() : _T("");
 			PathRemoveFileSpec(path);
 			setWorkingDir(path.c_str());
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_DOCMODIFIEDBYREPLACEALL:
+		{
+			SCNotification scnN{};
+			scnN.nmhdr.code = NPPN_GLOBALMODIFIED;
+			scnN.nmhdr.hwndFrom = reinterpret_cast<void*>(wParam);
+			scnN.nmhdr.idFrom = 0;
+			_pluginsManager.notify(&scnN);
 			return TRUE;
 		}
 

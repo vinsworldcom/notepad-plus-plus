@@ -222,6 +222,21 @@ bool ShortcutMapper::isFilterValid(PluginCmdShortcut sc)
 	return match;
 }
 
+bool ShortcutMapper::isFilterValid(ScintillaKeyMap sc)
+{
+	// do a classic search on shortcut name,
+	// then see if the list of keycombos matches (e.g. "Ctrl+X or Alt+Y" matches "or" and "Alt" and "Ctrl+")
+	if (_shortcutFilter.empty())
+		return true;
+
+	wstring shortcut_name = stringToLower(string2wstring(sc.getName(), CP_UTF8));
+	if (shortcut_name.find(_shortcutFilter) != std::string::npos)
+		return true; // name matches
+
+	wstring shortcut_value = stringToLower(string2wstring(sc.toString(), CP_UTF8));
+	return shortcut_value.find(_shortcutFilter) != std::string::npos; // list of shortcuts matches
+}
+
 void ShortcutMapper::fillOutBabyGrid()
 {
 	NppParameters& nppParam = NppParameters::getInstance();
@@ -1385,7 +1400,7 @@ bool ShortcutMapper::findKeyConflicts(__inout_opt generic_string * const keyConf
 							*keyConflictLocation += TEXT("  |  ");
 							*keyConflictLocation += std::to_wstring(itemIndex + 1);
 							*keyConflictLocation += TEXT("   ");
-							*keyConflictLocation += string2wstring(vShortcuts[itemIndex].getName(), CP_UTF8);;
+							*keyConflictLocation += string2wstring(vShortcuts[itemIndex].getName(), CP_UTF8);
 							*keyConflictLocation += TEXT("  ( ");
 							*keyConflictLocation += string2wstring(vShortcuts[itemIndex].toString(), CP_UTF8);
 							*keyConflictLocation += TEXT(" )");
