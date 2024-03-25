@@ -590,6 +590,8 @@ static const ScintillaKeyDefinition scintKeyDefs[] =
 #define NONEEDSHORTCUTSXMLBACKUP_FILENAME L"v852NoNeedShortcutsBackup.xml"
 #define SHORTCUTSXML_FILENAME L"shortcuts.xml"
 
+#define SESSION_BACKUP_EXT L".inCaseOfCorruption.bak"
+
 typedef void (WINAPI *PGNSI)(LPSYSTEM_INFO);
 
 int strVal(const TCHAR *str, int base)
@@ -1130,7 +1132,7 @@ std::wstring NppParameters::getSettingsFolder()
 bool NppParameters::load()
 {
 	L_END = L_EXTERNAL;
-	bool isAllLaoded = true;
+	bool isAllLoaded = true;
 
 	_isx64 = sizeof(void *) == 8;
 
@@ -1310,7 +1312,7 @@ bool NppParameters::load()
 
 		delete _pXmlDoc;
 		_pXmlDoc = nullptr;
-		isAllLaoded = false;
+		isAllLoaded = false;
 	}
 	else
 		getLangKeywordsFromXmlTree();
@@ -1379,7 +1381,7 @@ bool NppParameters::load()
 		}
 		delete _pXmlUserStylerDoc;
 		_pXmlUserStylerDoc = NULL;
-		isAllLaoded = false;
+		isAllLoaded = false;
 	}
 	else
 		getUserStylersFromXmlTree();
@@ -1404,7 +1406,7 @@ bool NppParameters::load()
 	{
 		delete _pXmlUserLangDoc;
 		_pXmlUserLangDoc = nullptr;
-		isAllLaoded = false;
+		isAllLoaded = false;
 	}
 	else
 	{
@@ -1466,7 +1468,7 @@ bool NppParameters::load()
 	{
 		delete _pXmlNativeLangDocA;
 		_pXmlNativeLangDocA = nullptr;
-		isAllLaoded = false;
+		isAllLoaded = false;
 	}
 
 	//---------------------------------//
@@ -1481,7 +1483,7 @@ bool NppParameters::load()
 	{
 		delete _pXmlToolIconsDoc;
 		_pXmlToolIconsDoc = nullptr;
-		isAllLaoded = false;
+		isAllLoaded = false;
 	}
 
 	//------------------------------//
@@ -1511,7 +1513,7 @@ bool NppParameters::load()
 	{
 		delete _pXmlShortcutDocA;
 		_pXmlShortcutDocA = nullptr;
-		isAllLaoded = false;
+		isAllLoaded = false;
 	}
 	else
 	{
@@ -1544,7 +1546,7 @@ bool NppParameters::load()
 	{
 		delete _pXmlContextMenuDocA;
 		_pXmlContextMenuDocA = nullptr;
-		isAllLaoded = false;
+		isAllLoaded = false;
 	}
 
 	//---------------------------------------------//
@@ -1574,10 +1576,50 @@ bool NppParameters::load()
 		TiXmlDocument* pXmlSessionDoc = new TiXmlDocument(_sessionPath);
 
 		loadOkay = pXmlSessionDoc->LoadFile();
+		if (loadOkay)
+		{
+			loadOkay = getSessionFromXmlTree(pXmlSessionDoc, _session);
+		}
+		
 		if (!loadOkay)
-			isAllLaoded = false;
-		else
-			getSessionFromXmlTree(pXmlSessionDoc, _session);
+		{
+			wstring sessionInCaseOfCorruption_bak = _sessionPath;
+			sessionInCaseOfCorruption_bak += SESSION_BACKUP_EXT;
+			if (::PathFileExists(sessionInCaseOfCorruption_bak.c_str()))
+			{
+				BOOL bFileSwapOk = false;
+				if (::PathFileExists(_sessionPath.c_str()))
+				{
+					// an invalid session.xml file exists
+					bFileSwapOk = ::ReplaceFile(_sessionPath.c_str(), sessionInCaseOfCorruption_bak.c_str(), nullptr,
+						REPLACEFILE_IGNORE_MERGE_ERRORS | REPLACEFILE_IGNORE_ACL_ERRORS, 0, 0);
+				}
+				else
+				{
+					// no session.xml file
+					bFileSwapOk = ::MoveFileEx(sessionInCaseOfCorruption_bak.c_str(), _sessionPath.c_str(),
+						MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH);
+				}
+
+				if (bFileSwapOk)
+				{
+					TiXmlDocument* pXmlSessionBackupDoc = new TiXmlDocument(_sessionPath);
+					loadOkay = pXmlSessionBackupDoc->LoadFile();
+					if (loadOkay)
+						loadOkay = getSessionFromXmlTree(pXmlSessionBackupDoc, _session);
+
+					delete pXmlSessionBackupDoc;
+				}
+
+				if (!loadOkay)
+					isAllLoaded = false; // either the backup file is also invalid or cannot be swapped with the session.xml
+			}
+			else
+			{
+				// no backup file
+				isAllLoaded = false;
+			}
+		}
 
 		delete pXmlSessionDoc;
 
@@ -1652,7 +1694,7 @@ bool NppParameters::load()
 		_isRegForOSAppRestartDisabled = (::PathFileExists(filePath.c_str()) == TRUE);
 	}
 
-	return isAllLaoded;
+	return isAllLoaded;
 }
 
 
@@ -2820,16 +2862,16 @@ void NppParameters::feedShortcut(TiXmlNodeA *node)
 		childNode ;
 		childNode = childNode->NextSibling("Shortcut"))
 	{
-		int id;
+		int id = 0;
 		const char* idStr = (childNode->ToElement())->Attribute("id", &id);
 		if (idStr)
 		{
 			//find the commandid that matches this Shortcut sc and alter it, push back its index in the modified list, if not present
 			size_t len = _shortcuts.size();
 			bool isFound = false;
-			for (size_t i = 0; i < len, !isFound; ++i)
+			for (size_t i = 0; i < len && !isFound; ++i)
 			{
-				if (_shortcuts[i].getID() == (unsigned long)id)
+				if (_shortcuts[i].getID() == static_cast<unsigned long>(id))
 				{	//found our match
 					isFound = getInternalCommandShortcuts(childNode, _shortcuts[i]);
 
@@ -3591,21 +3633,25 @@ void NppParameters::writeSession(const Session & session, const TCHAR *fileName)
 {
 	const TCHAR *sessionPathName = fileName ? fileName : _sessionPath.c_str();
 
+	//
 	// Make sure session file is not read-only
+	//
 	removeReadOnlyFlagFromFileAttributes(sessionPathName);
 
+	// 
 	// Backup session file before overriting it
+	//
 	TCHAR backupPathName[MAX_PATH]{};
 	BOOL doesBackupCopyExist = FALSE;
 	if (PathFileExists(sessionPathName))
 	{
 		_tcscpy(backupPathName, sessionPathName);
-		_tcscat(backupPathName, TEXT(".inCaseOfCorruption.bak"));
+		_tcscat(backupPathName, SESSION_BACKUP_EXT);
 		
 		// Make sure backup file is not read-only, if it exists
 		removeReadOnlyFlagFromFileAttributes(backupPathName);
 		doesBackupCopyExist = CopyFile(sessionPathName, backupPathName, FALSE);
-		if (!doesBackupCopyExist)
+		if (!doesBackupCopyExist && !isEndSessionCritical())
 		{
 			wstring errTitle = L"Session file backup error: ";
 			errTitle += GetLastErrorAsString(0);
@@ -3613,11 +3659,12 @@ void NppParameters::writeSession(const Session & session, const TCHAR *fileName)
 		}
 	}
 
+	//
+	// Prepare for writing
+	//
 	TiXmlDocument* pXmlSessionDoc = new TiXmlDocument(sessionPathName);
-
 	TiXmlDeclaration* decl = new TiXmlDeclaration(TEXT("1.0"), TEXT("UTF-8"), TEXT(""));
 	pXmlSessionDoc->LinkEndChild(decl);
-
 	TiXmlNode *root = pXmlSessionDoc->InsertEndChild(TiXmlElement(TEXT("NotepadPlus")));
 
 	if (root)
@@ -3709,32 +3756,48 @@ void NppParameters::writeSession(const Session & session, const TCHAR *fileName)
 		}
 	}
 
+	//
+	// Write the session file
+	//
 	bool sessionSaveOK = pXmlSessionDoc->SaveFile();
 
-	if (!sessionSaveOK)
+	//
+	// Double checking: prevent written session file corrupted while writting
+	//
+	if (sessionSaveOK)
+	{
+		TiXmlDocument* pXmlSessionCheck = new TiXmlDocument(sessionPathName);
+		sessionSaveOK = pXmlSessionCheck->LoadFile();
+		if (sessionSaveOK)
+		{
+			Session sessionCheck;
+			sessionSaveOK = getSessionFromXmlTree(pXmlSessionCheck, sessionCheck);
+		}
+		delete pXmlSessionCheck;
+	}
+	else if (!isEndSessionCritical())
 	{
 		::MessageBox(nullptr, sessionPathName, L"Error of saving session XML file", MB_OK | MB_APPLMODAL | MB_ICONWARNING);
 	}
-	else
-	{
-		// Double checking: prevent written session file corrupted while writting
-		TiXmlDocument* pXmlSessionCheck = new TiXmlDocument(sessionPathName);
-		sessionSaveOK = pXmlSessionCheck->LoadFile();
-		delete pXmlSessionCheck;
-	}
 
+	//
+	// If error after double checking, restore session backup file
+	//
 	if (!sessionSaveOK)
 	{
 		if (doesBackupCopyExist) // session backup file exists, restore it
 		{
-			::MessageBox(nullptr, backupPathName, L"Saving session error - restore backup", MB_OK | MB_APPLMODAL | MB_ICONWARNING);
+			if (!isEndSessionCritical())
+				::MessageBox(nullptr, backupPathName, L"Saving session error - restoring from the backup:", MB_OK | MB_APPLMODAL | MB_ICONWARNING);
 
 			wstring sessionPathNameFail2Load = sessionPathName;
 			sessionPathNameFail2Load += L".fail2Load";
-			MoveFileEx(sessionPathName, sessionPathNameFail2Load.c_str(), MOVEFILE_REPLACE_EXISTING);
-			CopyFile(backupPathName, sessionPathName, FALSE);
+			ReplaceFile(sessionPathName, backupPathName, sessionPathNameFail2Load.c_str(), REPLACEFILE_IGNORE_MERGE_ERRORS | REPLACEFILE_IGNORE_ACL_ERRORS, 0, 0);
 		}
 	}
+	/*
+	 * Keep session backup file in case of corrupted session file
+	 * 
 	else
 	{
 		if (backupPathName[0]) // session backup file not useful, delete it
@@ -3742,6 +3805,7 @@ void NppParameters::writeSession(const Session & session, const TCHAR *fileName)
 			::DeleteFile(backupPathName);
 		}
 	}
+	*/
 
 	delete pXmlSessionDoc;
 }
@@ -6338,19 +6402,37 @@ void NppParameters::feedScintillaParam(TiXmlNode *node)
 			_svp._bookMarkMarginShow = false;
 	}
 
-	// Bookmark Margin
-	nm = element->Attribute(TEXT("isChangeHistoryEnabled"));
+	// Change History Margin
+	int chState = 0;
+	nm = element->Attribute(TEXT("isChangeHistoryEnabled"), &chState);
 	if (nm)
 	{
-		if (!lstrcmp(nm, TEXT("yes")))
+		if (!lstrcmp(nm, TEXT("yes"))) // for the retro-compatibility
+			chState = 1;
+
+		_svp._isChangeHistoryEnabled4NextSession = static_cast<changeHistoryState>(chState);
+		switch (chState)
 		{
-			_svp._isChangeHistoryEnabled = true;
-			_svp._isChangeHistoryEnabled4NextSession = true;
-		}
-		else if (!lstrcmp(nm, TEXT("no")))
-		{
-			_svp._isChangeHistoryEnabled = false;
-			_svp._isChangeHistoryEnabled4NextSession = false;
+			case changeHistoryState::disable:
+				_svp._isChangeHistoryMarginEnabled = false;
+				_svp._isChangeHistoryIndicatorEnabled = false;
+				break;
+			case changeHistoryState::margin:
+				_svp._isChangeHistoryMarginEnabled = true;
+				_svp._isChangeHistoryIndicatorEnabled = false;
+				break;
+			case changeHistoryState::indicator:
+				_svp._isChangeHistoryMarginEnabled = false;
+				_svp._isChangeHistoryIndicatorEnabled = true;
+				break;
+			case changeHistoryState::marginIndicator:
+				_svp._isChangeHistoryMarginEnabled = true;
+				_svp._isChangeHistoryIndicatorEnabled = true;
+				break;
+			default:
+			_svp._isChangeHistoryMarginEnabled = true;
+			_svp._isChangeHistoryIndicatorEnabled = false;
+			_svp._isChangeHistoryEnabled4NextSession = changeHistoryState::marginIndicator;
 		}
 	}
 
@@ -6872,7 +6954,9 @@ bool NppParameters::writeScintillaParams()
 										(_svp._folderStyle == FOLDER_STYLE_CIRCLE)?TEXT("circle"):
 										(_svp._folderStyle == FOLDER_STYLE_NONE)?TEXT("none"):TEXT("box");
 	(scintNode->ToElement())->SetAttribute(TEXT("folderMarkStyle"), pFolderStyleStr);
-	(scintNode->ToElement())->SetAttribute(TEXT("isChangeHistoryEnabled"), _svp._isChangeHistoryEnabled4NextSession ? TEXT("yes") : TEXT("no"));
+	
+	(scintNode->ToElement())->SetAttribute(TEXT("isChangeHistoryEnabled"), _svp._isChangeHistoryEnabled4NextSession); // no -> 0 (disable), yes -> 1 (margin), yes ->2 (indicator), yes-> 3 (margin + indicator)
+
 	const TCHAR *pWrapMethodStr = (_svp._lineWrapMethod == LINEWRAP_ALIGNED)?TEXT("aligned"):
 								(_svp._lineWrapMethod == LINEWRAP_INDENT)?TEXT("indent"):TEXT("default");
 	(scintNode->ToElement())->SetAttribute(TEXT("lineWrapMethod"), pWrapMethodStr);

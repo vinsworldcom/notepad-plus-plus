@@ -340,10 +340,13 @@ void ScintillaEditView::init(HINSTANCE hInst, HWND hPere)
 	{
 		auto defaultCharListLen = execute(SCI_GETWORDCHARS);
 		char *defaultCharList = new char[defaultCharListLen + 1];
-		execute(SCI_GETWORDCHARS, 0, reinterpret_cast<LPARAM>(defaultCharList));
-		defaultCharList[defaultCharListLen] = '\0';
-		_defaultCharList = defaultCharList;
-		delete[] defaultCharList;
+		if(defaultCharList)
+		{
+			execute(SCI_GETWORDCHARS, 0, reinterpret_cast<LPARAM>(defaultCharList));
+			defaultCharList[defaultCharListLen] = '\0';
+			_defaultCharList = defaultCharList;
+			delete[] defaultCharList;
+		}
 	}
 	//Get the startup document and make a buffer for it so it can be accessed like a file
 	attachDefaultDoc();
@@ -502,7 +505,7 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 			// prevent "control characters" from being entered in text
 			// (don't need to be concerned about Tab or CR or LF etc here)
 			if ((NppParameters::getInstance()).getSVP()._npcNoInputC0 &&
-				((wParam >= 0 && wParam <= 31) || wParam == 127))
+				(wParam <= 31 || wParam == 127))
 			{
 				return FALSE;
 			}
@@ -1249,6 +1252,7 @@ void ScintillaEditView::setJsLexer()
 	// In the most of cases, the symbols are defined outside of file.
 	execute(SCI_SETPROPERTY, reinterpret_cast<WPARAM>("lexer.cpp.track.preprocessor"), reinterpret_cast<LPARAM>("0"));
 	execute(SCI_SETPROPERTY, reinterpret_cast<WPARAM>("lexer.cpp.backquoted.strings"), reinterpret_cast<LPARAM>("1"));
+	execute(SCI_SETPROPERTY, reinterpret_cast<WPARAM>("lexer.cpp.backquoted.strings"), reinterpret_cast<LPARAM>("2"));
 }
 
 void ScintillaEditView::setTclLexer()
@@ -2233,8 +2237,19 @@ void ScintillaEditView::activateBuffer(BufferID buffer, bool force)
 
 	NppParameters& nppParam = NppParameters::getInstance();
 	const ScintillaViewParams& svp = nppParam.getSVP();
-	int enabledCH = svp._isChangeHistoryEnabled ? (SC_CHANGE_HISTORY_ENABLED | SC_CHANGE_HISTORY_MARKERS) : SC_CHANGE_HISTORY_DISABLED;
-	execute(SCI_SETCHANGEHISTORY, enabledCH);
+
+	int enabledCHFlag = SC_CHANGE_HISTORY_DISABLED;
+	if (svp._isChangeHistoryMarginEnabled || svp._isChangeHistoryIndicatorEnabled)
+	{
+		enabledCHFlag = SC_CHANGE_HISTORY_ENABLED;
+
+		if (svp._isChangeHistoryMarginEnabled)
+			enabledCHFlag |= SC_CHANGE_HISTORY_MARKERS;
+
+		if (svp._isChangeHistoryIndicatorEnabled)
+			enabledCHFlag |= SC_CHANGE_HISTORY_INDICATORS;
+	}
+	execute(SCI_SETCHANGEHISTORY, enabledCHFlag);
 
 	if (isTextDirectionRTL() != buffer->isRTL())
 		changeTextDirection(buffer->isRTL());
@@ -3002,6 +3017,58 @@ void ScintillaEditView::performGlobalStyles()
 	}
 	execute(SCI_SETMARGINTYPEN, _SC_MARGE_CHANGEHISTORY, SC_MARGIN_COLOUR);
 	execute(SCI_SETMARGINBACKN, _SC_MARGE_CHANGEHISTORY, changeHistoryMarginColor);
+
+	COLORREF changeModifiedfgColor = orange;
+	COLORREF changeModifiedbgColor = orange;
+	pStyle = stylers.findByName(TEXT("Change History modified"));
+	if (pStyle)
+	{
+		changeModifiedfgColor = pStyle->_fgColor;
+		changeModifiedbgColor = pStyle->_bgColor;
+	}
+	execute(SCI_MARKERSETFORE, SC_MARKNUM_HISTORY_MODIFIED, changeModifiedfgColor);
+	execute(SCI_MARKERSETBACK, SC_MARKNUM_HISTORY_MODIFIED, changeModifiedbgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_MODIFIED_INSERTION, changeModifiedfgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_MODIFIED_DELETION, changeModifiedfgColor);
+
+	COLORREF changeRevertModifiedfgColor = yellowGreen;
+	COLORREF changeRevertModifiedbgColor = yellowGreen;
+	pStyle = stylers.findByName(TEXT("Change History revert modified"));
+	if (pStyle)
+	{
+		changeRevertModifiedfgColor = pStyle->_fgColor;
+		changeRevertModifiedbgColor = pStyle->_bgColor;
+	}
+	execute(SCI_MARKERSETFORE, SC_MARKNUM_HISTORY_REVERTED_TO_MODIFIED, changeRevertModifiedfgColor);
+	execute(SCI_MARKERSETBACK, SC_MARKNUM_HISTORY_REVERTED_TO_MODIFIED, changeRevertModifiedbgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_REVERTED_TO_MODIFIED_INSERTION, changeRevertModifiedfgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_REVERTED_TO_MODIFIED_DELETION, changeRevertModifiedfgColor);	
+
+	COLORREF changeRevertOriginfgColor = darkCyan;
+	COLORREF changeRevertOriginbgColor = darkCyan;
+	pStyle = stylers.findByName(TEXT("Change History revert origin"));
+	if (pStyle)
+	{
+		changeRevertOriginfgColor = pStyle->_fgColor;
+		changeRevertOriginbgColor = pStyle->_bgColor;
+	}
+	execute(SCI_MARKERSETFORE, SC_MARKNUM_HISTORY_REVERTED_TO_ORIGIN, changeRevertOriginfgColor);
+	execute(SCI_MARKERSETBACK, SC_MARKNUM_HISTORY_REVERTED_TO_ORIGIN, changeRevertOriginbgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_REVERTED_TO_ORIGIN_INSERTION, changeRevertOriginfgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_REVERTED_TO_ORIGIN_DELETION, changeRevertOriginfgColor);
+
+	COLORREF changeSavedfgColor = midGreen;
+	COLORREF changeSavedbgColor = midGreen;
+	pStyle = stylers.findByName(TEXT("Change History saved"));
+	if (pStyle)
+	{
+		changeSavedfgColor = pStyle->_fgColor;
+		changeSavedbgColor = pStyle->_bgColor;
+	}
+	execute(SCI_MARKERSETFORE, SC_MARKNUM_HISTORY_SAVED, changeSavedfgColor);
+	execute(SCI_MARKERSETBACK, SC_MARKNUM_HISTORY_SAVED, changeSavedbgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_SAVED_INSERTION, changeSavedfgColor);
+	execute(SCI_INDICSETFORE, INDICATOR_HISTORY_SAVED_DELETION, changeSavedfgColor);
 
 	COLORREF urlHoveredFG = grey;
 	pStyle = stylers.findByName(TEXT("URL hovered"));
