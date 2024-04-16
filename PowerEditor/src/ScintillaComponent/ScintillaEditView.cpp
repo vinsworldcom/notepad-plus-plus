@@ -158,6 +158,7 @@ LanguageNameInfo ScintillaEditView::_langNameInfoArray[L_EXTERNAL + 1] = {
 	{TEXT("gdscript"),		TEXT("GDScript"),			TEXT("GDScript file"),									L_GDSCRIPT,		"gdscript"},
 	{TEXT("hollywood"),		TEXT("Hollywood"),			TEXT("Hollywood script"),								L_HOLLYWOOD,	"hollywood"},
 	{TEXT("go"),			TEXT("Go"),					TEXT("Go source file"),									L_GOLANG,		"cpp"},
+	{TEXT("raku"),			TEXT("Raku"),				TEXT("Raku source file"),								L_RAKU,			"raku"},
 	{TEXT("ext"),			TEXT("External"),			TEXT("External"),										L_EXTERNAL,		"null"}
 };
 
@@ -643,6 +644,14 @@ LRESULT ScintillaEditView::scintillaNew_Proc(HWND hwnd, UINT Message, WPARAM wPa
 																	  // Solution suggested by Neil Hodgson. See:
 																	  // https://sourceforge.net/p/scintilla/bugs/2412/
 						break;
+	
+					case VK_ESCAPE:
+					{
+						int selection = static_cast<int>(execute(SCI_GETMAINSELECTION, 0, 0));
+						int caret = static_cast<int>(execute(SCI_GETSELECTIONNCARET, selection, 0));
+						execute(SCI_SETSELECTION, caret, caret);
+						break;
+					}
 
 					default:
 						break;
@@ -2002,6 +2011,9 @@ void ScintillaEditView::defineDocType(LangType typeDoc)
 
 		case L_HOLLYWOOD:
 			setHollywoodLexer(); break;
+
+		case L_RAKU:
+			setRakuLexer(); break;
 
 		case L_TEXT :
 		default :
