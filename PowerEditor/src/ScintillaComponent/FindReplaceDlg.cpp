@@ -300,8 +300,6 @@ void FindReplaceDlg::create(int dialogID, bool isRTL, bool msgDestParent, bool t
 	getClientRect(rect);
 	_tab.init(_hInst, _hSelf, false, true);
 	NppDarkMode::subclassTabControl(_tab.getHSelf());
-	int tabDpiDynamicalHeight = dpiManager.scaleY(13);
-	_tab.setFont(TEXT("Tahoma"), tabDpiDynamicalHeight);
 
 	const TCHAR *find = TEXT("Find");
 	const TCHAR *replace = TEXT("Replace");
@@ -1029,7 +1027,7 @@ void FindInFinderDlg::writeOptions()
 	_options._dotMatchesNewline = isCheckedOrNot(IDREDOTMATCHNL_FIFOLDER);
 }
 
-intptr_t CALLBACK FindInFinderDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM /*lParam*/)
+intptr_t CALLBACK FindInFinderDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch (message)
 	{
@@ -1086,6 +1084,14 @@ intptr_t CALLBACK FindInFinderDlg::run_dlgProc(UINT message, WPARAM wParam, LPAR
 		case NPPM_INTERNAL_REFRESHDARKMODE:
 		{
 			NppDarkMode::autoThemeChildControls(_hSelf);
+			return TRUE;
+		}
+
+		case WM_DPICHANGED:
+		{
+			DPIManagerV2::setDpiWP(wParam);
+			setPositionDpi(lParam);
+
 			return TRUE;
 		}
 
@@ -1696,25 +1702,9 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 				case IDC_NEXT_TAB:
 				case IDC_PREV_TAB:
 				{
-					const int lastTab = TabCtrl_GetItemCount(_tab.getHSelf()) - 1;
-					int selTab = TabCtrl_GetCurSel(_tab.getHSelf());
+					const int selTabIdx = _tab.getNextOrPrevTabIdx(LOWORD(wParam) == IDC_NEXT_TAB);
 
-					if (LOWORD(wParam) == IDC_NEXT_TAB)
-					{
-						if (selTab++ == lastTab)
-						{
-							selTab = 0;
-						}
-					}
-					else
-					{
-						if (selTab-- == 0)
-						{
-							selTab = lastTab;
-						}
-					}
-
-					switch (static_cast<DIALOG_TYPE>(selTab))
+					switch (static_cast<DIALOG_TYPE>(selTabIdx))
 					{
 						case DIALOG_TYPE::FIND_DLG:
 						{

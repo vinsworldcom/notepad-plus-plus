@@ -198,6 +198,7 @@ LRESULT Notepad_plus::init(HWND hwnd)
 {
 	NppParameters& nppParam = NppParameters::getInstance();
 	NppGUI & nppGUI = nppParam.getNppGUI();
+	const UINT dpi = DPIManagerV2::getDpiForWindow(hwnd);
 
 	// Menu
 	_mainMenuHandle = ::GetMenu(hwnd);
@@ -432,11 +433,11 @@ LRESULT Notepad_plus::init(HWND hwnd)
 	//--Status Bar Section--//
 	bool willBeShown = nppGUI._statusBarShow;
 	_statusBar.init(_pPublicInterface->getHinst(), hwnd, 6);
-	_statusBar.setPartWidth(STATUSBAR_DOC_SIZE, nppParam._dpiManager.scaleX(220));
-	_statusBar.setPartWidth(STATUSBAR_CUR_POS, nppParam._dpiManager.scaleX(260));
-	_statusBar.setPartWidth(STATUSBAR_EOF_FORMAT, nppParam._dpiManager.scaleX(110));
-	_statusBar.setPartWidth(STATUSBAR_UNICODE_TYPE, nppParam._dpiManager.scaleX(120));
-	_statusBar.setPartWidth(STATUSBAR_TYPING_MODE, nppParam._dpiManager.scaleX(30));
+	_statusBar.setPartWidth(STATUSBAR_DOC_SIZE, DPIManagerV2::scale(220, dpi));
+	_statusBar.setPartWidth(STATUSBAR_CUR_POS, DPIManagerV2::scale(260, dpi));
+	_statusBar.setPartWidth(STATUSBAR_EOF_FORMAT, DPIManagerV2::scale(110, dpi));
+	_statusBar.setPartWidth(STATUSBAR_UNICODE_TYPE, DPIManagerV2::scale(120, dpi));
+	_statusBar.setPartWidth(STATUSBAR_TYPING_MODE, DPIManagerV2::scale(30, dpi));
 	_statusBar.display(willBeShown);
 
 	_pMainWindow = &_mainDocTab;
@@ -3710,6 +3711,29 @@ BOOL Notepad_plus::processIncrFindAccel(MSG *msg) const
 	return ::TranslateAccelerator(_incrementFindDlg.getHSelf(), _accelerator.getIncrFindAccTable(), msg);
 }
 
+BOOL Notepad_plus::processTabSwitchAccel(MSG* msg) const
+{
+	HWND hDlg = nullptr;
+	auto isRightDlg = [&msg, &hDlg](HWND hWnd) -> bool {
+		const bool isRight = (hWnd == msg->hwnd || (::IsChild(hWnd, msg->hwnd) == TRUE));
+		if (isRight)
+		{
+			hDlg = hWnd;
+		}
+		return isRight;
+		};
+	
+	if (isRightDlg(_findReplaceDlg.getHSelf())
+		|| isRightDlg(_pluginsAdminDlg.getHSelf())
+		|| (ScintillaEditView::getUserDefineDlg() != nullptr
+			&& isRightDlg(ScintillaEditView::getUserDefineDlg()->getHSelf()))
+		)
+	{
+		return static_cast<BOOL>(::TranslateAccelerator(hDlg, _accelerator.getTabSwitchAccTable(), msg));
+	}
+	return FALSE;
+}
+
 void Notepad_plus::setLanguage(LangType langType)
 {
 	//Add logic to prevent changing a language when a document is shared between two views
@@ -4280,15 +4304,17 @@ void Notepad_plus::dropFiles(HDROP hdrop)
 	if (hdrop)
 	{
 		// Determinate in which view the file(s) is (are) dropped
-		POINT p;
+		POINT p{};
 		::DragQueryPoint(hdrop, &p);
 		HWND hWin = ::ChildWindowFromPointEx(_pPublicInterface->getHSelf(), p, CWP_SKIPINVISIBLE);
 		if (!hWin) return;
 
-		if ((_subEditView.getHSelf() == hWin) || (_subDocTab.getHSelf() == hWin) || currentView() == SUB_VIEW)
-			switchEditViewTo(SUB_VIEW);
-		else
+		if ((_mainEditView.getHSelf() == hWin) || (_mainDocTab.getHSelf() == hWin))
 			switchEditViewTo(MAIN_VIEW);
+		else if ((_subEditView.getHSelf() == hWin) || (_subDocTab.getHSelf() == hWin))
+			switchEditViewTo(SUB_VIEW);
+		//else
+			// do not change the current Notepad++ edit-view
 
 		int filesDropped = ::DragQueryFile(hdrop, 0xffffffff, NULL, 0);
 
