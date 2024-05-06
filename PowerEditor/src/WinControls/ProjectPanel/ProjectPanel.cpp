@@ -1272,7 +1272,7 @@ void ProjectPanel::recursiveAddFilesFrom(const TCHAR *folderPath, HTREEITEM hTre
 			}
 			else // Always recursive
 			{
-				if ((OrdinalIgnoreCaseCompareStrings(foundData.cFileName, TEXT(".")) != 0) && (OrdinalIgnoreCaseCompareStrings(foundData.cFileName, TEXT("..")) != 0))
+				if ((wcscmp(foundData.cFileName, TEXT(".")) != 0) && (wcscmp(foundData.cFileName, TEXT("..")) != 0))
 				{
 					generic_string pathDir(folderPath);
 					if (folderPath[lstrlen(folderPath)-1] != '\\')
@@ -1372,7 +1372,7 @@ intptr_t CALLBACK FileRelocalizerDlg::run_dlgProc(UINT Message, WPARAM wParam, L
 
 		case WM_DPICHANGED:
 		{
-			DPIManagerV2::setDpiWP(wParam);
+			_dpiManager.setDpiWP(wParam);
 			setPositionDpi(lParam);
 
 			return TRUE;
