@@ -339,6 +339,8 @@ void FindReplaceDlg::create(int dialogID, bool isRTL, bool msgDestParent, bool t
 	{
 		RECT rc = getViewablePositionRect(nppGUI._findWindowPos);
 		::SetWindowPos(_hSelf, HWND_TOP, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, swpFlags);
+		if ((swpFlags & SWP_SHOWWINDOW) == SWP_SHOWWINDOW)
+			::SendMessageW(_hSelf, DM_REPOSITION, 0, 0);
 	}
 	else
 	{
@@ -1229,6 +1231,55 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 		case WM_SIZE:
 		{
 			resizeDialogElements(LOWORD(lParam));
+			return TRUE;
+		}
+
+		case WM_NCHITTEST:
+		{
+			LRESULT lrHitTest = ::DefWindowProc(_hSelf, message, wParam, lParam);
+			switch (lrHitTest)
+			{
+				case HTTOP:
+				{
+					lrHitTest = HTBORDER;
+					break;
+				}
+
+				case HTTOPLEFT:
+				{
+					lrHitTest = HTLEFT;
+					break;
+				}
+
+				case HTTOPRIGHT:
+				{
+					lrHitTest = HTRIGHT;
+					break;
+				}
+
+				case HTBOTTOM:
+				{
+					lrHitTest = HTBORDER;
+					break;
+				}
+
+				case HTBOTTOMLEFT:
+				{
+					lrHitTest = HTLEFT;
+					break;
+				}
+
+				case HTBOTTOMRIGHT:
+				{
+					lrHitTest = HTRIGHT;
+					break;
+				}
+
+				default:
+					return FALSE;
+			}
+
+			::SetWindowLongPtr(_hSelf, DWLP_MSGRESULT, lrHitTest);
 			return TRUE;
 		}
 
