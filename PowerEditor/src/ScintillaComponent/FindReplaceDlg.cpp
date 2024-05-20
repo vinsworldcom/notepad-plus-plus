@@ -272,8 +272,8 @@ FindReplaceDlg::~FindReplaceDlg()
 	if (_filterTip)
 		::DestroyWindow(_filterTip);
 
-	if (_hMonospaceFont)
-		::DeleteObject(_hMonospaceFont);
+	if (_hComboBoxFont)
+		::DeleteObject(_hComboBoxFont);
 
 	if (_hLargerBolderFont)
 		::DeleteObject(_hLargerBolderFont);
@@ -294,10 +294,36 @@ void FindReplaceDlg::create(int dialogID, bool isRTL, bool msgDestParent, bool t
 	_statusBar.init(GetModuleHandle(NULL), _hSelf, 0);
 	_statusBar.display();
 
-	DPIManager& dpiManager = NppParameters::getInstance()._dpiManager;
+	setDpi();
 
-	RECT rect{};
-	getClientRect(rect);
+	RECT rcClient{};
+	getClientRect(rcClient);
+
+	RECT rcCount{};
+	getMappedChildRect(IDCCOUNTALL, rcCount);
+
+	RECT rcOk{};
+	getMappedChildRect(IDOK, rcOk);
+
+	RECT rcTransGrpb{};
+	getMappedChildRect(IDC_TRANSPARENT_GRPBOX, rcTransGrpb);
+
+	RECT rcStatusBar{};
+	::GetWindowRect(_statusBar.getHSelf(), &rcStatusBar);
+
+	const LONG gap = (rcCount.top - rcOk.bottom);
+	_lesssModeHeight = (rcCount.bottom + gap);
+
+	const LONG padding = _dpiManager.getSystemMetricsForDpi(SM_CXPADDEDBORDER);
+	_szBorder.cx = (_dpiManager.getSystemMetricsForDpi(SM_CXFRAME) + padding) * 2;
+	_szBorder.cy = (_dpiManager.getSystemMetricsForDpi(SM_CYFRAME) + padding) * 2
+		+ _dpiManager.getSystemMetricsForDpi(SM_CYCAPTION)
+		+ (rcStatusBar.bottom - rcStatusBar.top);
+
+	//fill min dialog size info
+	_szMinDialog.cx = rcClient.right - rcClient.left;
+	_szMinDialog.cy = rcTransGrpb.bottom + gap;
+
 	_tab.init(_hInst, _hSelf, false, true);
 	NppDarkMode::subclassTabControl(_tab.getHSelf());
 
@@ -313,23 +339,8 @@ void FindReplaceDlg::create(int dialogID, bool isRTL, bool msgDestParent, bool t
 	_tab.insertAtEnd(findInProjects);
 	_tab.insertAtEnd(mark);
 
-	_tab.reSizeTo(rect);
+	_tab.reSizeTo(rcClient);
 	_tab.display();
-
-	_initialClientWidth = rect.right - rect.left;
-
-	//fill min dialog size info
-	getWindowRect(_initialWindowRect);
-	_initialWindowRect.right = _initialWindowRect.right - _initialWindowRect.left + dpiManager.scaleX(10);
-	_initialWindowRect.left = 0;
-	_initialWindowRect.bottom = _initialWindowRect.bottom - _initialWindowRect.top;
-	_initialWindowRect.top = 0;
-
-	RECT dlgRc{};
-	getWindowRect(dlgRc);
-
-	RECT countRc{};
-	::GetWindowRect(::GetDlgItem(_hSelf, IDCCOUNTALL), &countRc);
 
 	NppParameters& nppParam = NppParameters::getInstance();
 	NppGUI& nppGUI = nppParam.getNppGUI();
@@ -338,7 +349,9 @@ void FindReplaceDlg::create(int dialogID, bool isRTL, bool msgDestParent, bool t
 	if (nppGUI._findWindowPos.bottom - nppGUI._findWindowPos.top != 0)  // check height against 0 as a test of valid data from config
 	{
 		RECT rc = getViewablePositionRect(nppGUI._findWindowPos);
-		::SetWindowPos(_hSelf, HWND_TOP, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, swpFlags);
+		::SetWindowPos(_hSelf, HWND_TOP, rc.left, rc.top, 0, 0, SWP_HIDEWINDOW | SWP_NOSIZE | SWP_NOACTIVATE);
+		::SetWindowPos(_hSelf, HWND_TOP, 0, 0, _rc.right - _rc.left, _rc.bottom - _rc.top, swpFlags | SWP_NOMOVE);
+
 		if ((swpFlags & SWP_SHOWWINDOW) == SWP_SHOWWINDOW)
 			::SendMessageW(_hSelf, DM_REPOSITION, 0, 0);
 	}
@@ -346,10 +359,6 @@ void FindReplaceDlg::create(int dialogID, bool isRTL, bool msgDestParent, bool t
 	{
 		goToCenter(swpFlags);
 	}
-
-	RECT rcStatusBar{};
-	::GetClientRect(_statusBar.getHSelf(), &rcStatusBar);
-	_lesssModeHeight = (countRc.bottom - dlgRc.top) + (rcStatusBar.bottom - rcStatusBar.top) + dpiManager.scaleY(10);
 
 	if (nppGUI._findWindowLessMode)
 	{
@@ -1152,63 +1161,189 @@ intptr_t CALLBACK FindInFinderDlg::run_dlgProc(UINT message, WPARAM wParam, LPAR
 }
 
 
-void FindReplaceDlg::resizeDialogElements(LONG newWidth)
+void FindReplaceDlg::resizeDialogElements()
 {
+	auto getRcWidth = [](const RECT& rc) -> int {
+		return rc.right - rc.left;
+		};
+
+	auto setOrDeferWindowPos = [](HDWP hWinPosInfo, HWND hWnd, HWND hWndInsertAfter, int x, int y, int cx, int cy, UINT uFlags) -> HDWP {
+		if (hWinPosInfo != nullptr)
+		{
+			return ::DeferWindowPos(hWinPosInfo, hWnd, hWndInsertAfter, x, y, cx, cy, uFlags);
+		}
+		::SetWindowPos(hWnd, hWndInsertAfter, x, y, cx, cy, uFlags);
+		return nullptr;
+		};
+
+	const bool isLessModeOn = NppParameters::getInstance().getNppGUI()._findWindowLessMode;
+
 	//elements that need to be resized horizontally (all edit/combo boxes etc.)
 	const auto resizeWindowIDs = { IDFINDWHAT, IDREPLACEWITH, IDD_FINDINFILES_FILTERS_COMBO, IDD_FINDINFILES_DIR_COMBO };
 
 	//elements that need to be moved
-	const auto moveWindowIDs = {
+	const auto moveCheckIds = {
 		IDD_FINDINFILES_FOLDERFOLLOWSDOC_CHECK,IDD_FINDINFILES_RECURSIVE_CHECK, IDD_FINDINFILES_INHIDDENDIR_CHECK,
 		IDD_FINDINFILES_PROJECT1_CHECK, IDD_FINDINFILES_PROJECT2_CHECK, IDD_FINDINFILES_PROJECT3_CHECK,
-		IDC_TRANSPARENT_GRPBOX, IDC_TRANSPARENT_CHECK, IDC_TRANSPARENT_LOSSFOCUS_RADIO, IDC_TRANSPARENT_ALWAYS_RADIO,
-		IDC_PERCENTAGE_SLIDER , IDC_REPLACEINSELECTION , IDC_IN_SELECTION_CHECK,
-
-		IDD_FINDINFILES_BROWSE_BUTTON, IDCMARKALL, IDC_CLEAR_ALL, IDCCOUNTALL, IDC_FINDALL_OPENEDFILES, IDC_FINDALL_CURRENTFILE,
-		IDREPLACE, IDREPLACEALL, IDD_FINDREPLACE_SWAP_BUTTON, IDC_REPLACE_OPENEDFILES, IDD_FINDINFILES_FIND_BUTTON, IDD_FINDINFILES_REPLACEINFILES, IDOK, IDCANCEL,
-		IDC_FINDPREV, IDC_FINDNEXT, IDC_2_BUTTONS_MODE, IDC_COPY_MARKED_TEXT, IDD_FINDINFILES_REPLACEINPROJECTS, IDD_RESIZE_TOGGLE_BUTTON
 	};
 
-	const UINT flags = SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS;
+	const auto moveBtnIDs = {
+		IDCMARKALL, IDC_CLEAR_ALL, IDCCOUNTALL, IDC_FINDALL_OPENEDFILES, IDC_FINDALL_CURRENTFILE,
+		IDREPLACE, IDREPLACEALL, IDC_REPLACE_OPENEDFILES, IDD_FINDINFILES_FIND_BUTTON, IDD_FINDINFILES_REPLACEINFILES, IDCANCEL,
+		IDC_FINDPREV, IDC_COPY_MARKED_TEXT, IDD_FINDINFILES_REPLACEINPROJECTS
+	};
 
-	auto newDeltaWidth = newWidth - _initialClientWidth;
-	auto addWidth = newDeltaWidth - _deltaWidth;
-	_deltaWidth = newDeltaWidth;
+	const auto moveOtherCtrlsIDs = {
+		IDC_REPLACEINSELECTION, IDD_RESIZE_TOGGLE_BUTTON, IDD_FINDREPLACE_SWAP_BUTTON
+	};
 
-	RECT rc;
+	const auto moveLaterIDs = {
+		IDC_FINDPREV, IDD_FINDINFILES_BROWSE_BUTTON
+	};
+
+	const auto moveTransIDs = {
+		IDC_TRANSPARENT_CHECK, IDC_TRANSPARENT_LOSSFOCUS_RADIO, IDC_TRANSPARENT_ALWAYS_RADIO, IDC_PERCENTAGE_SLIDER
+	};
+
+	constexpr UINT flags = SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS;
+
+	RECT rcClient{};
+	getClientRect(rcClient);
+
+	RECT rcTmp{};
+
+	RECT rcOkBtn{};
+	HWND hOkBtn = ::GetDlgItem(_hSelf, IDOK);
+	getMappedChildRect(hOkBtn, rcOkBtn);
+
+	RECT rcSelCheck{};
+	HWND hSelCheck = ::GetDlgItem(_hSelf, IDC_IN_SELECTION_CHECK);
+	getMappedChildRect(hSelCheck, rcSelCheck);
+
+	RECT rc2ModeCheck{};
+	HWND h2ModeCheck = ::GetDlgItem(_hSelf, IDC_2_BUTTONS_MODE);
+	getMappedChildRect(h2ModeCheck, rc2ModeCheck);
+
+	const int gap = rc2ModeCheck.left - rcOkBtn.right; // this value is important, same spacing is used almost everywhere in FindReplaceDlg.rc
+	const int posSelCheck = rcOkBtn.left - rcSelCheck.left;
+
+	::SetWindowPos(h2ModeCheck, nullptr, rcClient.right - gap - getRcWidth(rc2ModeCheck), rc2ModeCheck.top, 0, 0, SWP_NOSIZE | flags);
+	getMappedChildRect(h2ModeCheck, rc2ModeCheck);
+
+	::SetWindowPos(hOkBtn, nullptr, rc2ModeCheck.left - gap - getRcWidth(rcOkBtn), rcOkBtn.top, 0, 0, SWP_NOSIZE | flags);
+	getMappedChildRect(hOkBtn, rcOkBtn);
+
+	::SetWindowPos(hSelCheck, nullptr, rcOkBtn.left - posSelCheck, rcSelCheck.top, 0, 0, SWP_NOSIZE | flags);
+	getMappedChildRect(hSelCheck, rcSelCheck);
+
+	size_t nCtrls = moveCheckIds.size() + moveBtnIDs.size() + moveOtherCtrlsIDs.size();
+	auto hdwp = ::BeginDeferWindowPos(static_cast<int>(nCtrls));
+
+	RECT rcSelGrpb{};
+	HWND hSelGrpb = ::GetDlgItem(_hSelf, IDC_REPLACEINSELECTION);
+	getMappedChildRect(hSelGrpb, rcSelGrpb);
+	hdwp = setOrDeferWindowPos(hdwp, hSelGrpb, nullptr, rcSelCheck.left - (gap * 3) / 2, rcSelGrpb.top, 0, 0, SWP_NOSIZE | flags);
+
+	for (int moveWndID : moveCheckIds)
+	{
+		HWND moveHwnd = ::GetDlgItem(_hSelf, moveWndID);
+		getMappedChildRect(moveHwnd, rcTmp);
+		hdwp = setOrDeferWindowPos(hdwp, moveHwnd, nullptr, rcOkBtn.left + gap / 2, rcTmp.top, 0, 0, SWP_NOSIZE | flags);
+	}
+
+	for (int moveWndID : moveBtnIDs)
+	{
+		HWND moveHwnd = ::GetDlgItem(_hSelf, moveWndID);
+		getMappedChildRect(moveHwnd, rcTmp);
+		hdwp = setOrDeferWindowPos(hdwp, moveHwnd, nullptr, rcOkBtn.left, rcTmp.top, 0, 0, SWP_NOSIZE | flags);
+	}
+
+	RECT rcRszBtn{};
+	HWND hRszBtn = ::GetDlgItem(_hSelf, IDD_RESIZE_TOGGLE_BUTTON);
+	getMappedChildRect(hRszBtn, rcRszBtn);
+	hdwp = setOrDeferWindowPos(hdwp, hRszBtn, nullptr, rc2ModeCheck.left, rcRszBtn.top, 0, 0, SWP_NOSIZE | flags);
+
+	RECT rcSwapBtn{};
+	HWND hSwapBtn = ::GetDlgItem(_hSelf, IDD_FINDREPLACE_SWAP_BUTTON);
+	getMappedChildRect(hSwapBtn, rcSwapBtn);
+	hdwp = setOrDeferWindowPos(hdwp, hSwapBtn, nullptr, rcOkBtn.left - getRcWidth(rcSwapBtn) - gap, rcSwapBtn.top, 0, 0, SWP_NOSIZE | flags);
+
+	if (hdwp)
+		::EndDeferWindowPos(hdwp);
+
+	getMappedChildRect(hSwapBtn, rcSwapBtn);
+
+	nCtrls = resizeWindowIDs.size() + moveLaterIDs.size() + (isLessModeOn ? 0 : moveTransIDs.size()) + 1; // 1 is for tab control
+	hdwp = ::BeginDeferWindowPos(static_cast<int>(nCtrls));
+
 	for (int id : resizeWindowIDs)
 	{
 		HWND resizeHwnd = ::GetDlgItem(_hSelf, id);
-		::GetClientRect(resizeHwnd, &rc);
+		getMappedChildRect(resizeHwnd, rcTmp);
 
-		// Combo box for some reasons selects text on resize. So let's check befor resize if selection is present and clear it manually after resize.
+		// Combo box for some reasons selects text on resize. So let's check before resize if selection is present and clear it manually after resize.
 		DWORD endSelection = 0;
-		SendMessage(resizeHwnd, CB_GETEDITSEL, 0, (LPARAM)&endSelection);
+		::SendMessage(resizeHwnd, CB_GETEDITSEL, 0, reinterpret_cast<LPARAM>(&endSelection));
 
-		::SetWindowPos(resizeHwnd, NULL, 0, 0, rc.right + addWidth, rc.bottom, SWP_NOMOVE | flags);
+		hdwp = setOrDeferWindowPos(hdwp, resizeHwnd, nullptr, 0, 0, rcSwapBtn.left - rcTmp.left - gap, rcTmp.bottom - rcTmp.top, SWP_NOMOVE | flags);
 
 		if (endSelection == 0)
 		{
-			SendMessage(resizeHwnd, CB_SETEDITSEL, 0, 0);
+			::SendMessage(resizeHwnd, CB_SETEDITSEL, 0, 0);
 		}
 	}
 
-	for (int moveWndID : moveWindowIDs)
-	{
-		HWND moveHwnd = GetDlgItem(_hSelf, moveWndID);
-		::GetWindowRect(moveHwnd, &rc);
-		::MapWindowPoints(NULL, _hSelf, (LPPOINT)&rc, 2);
+	RECT rcFPrevBtn{};
+	HWND hFPrevBtn = ::GetDlgItem(_hSelf, IDC_FINDPREV);
+	getMappedChildRect(hFPrevBtn, rcFPrevBtn);
+	hdwp = setOrDeferWindowPos(hdwp, ::GetDlgItem(_hSelf, IDC_FINDNEXT), nullptr, rcFPrevBtn.right + gap, rcOkBtn.top, 0, 0, SWP_NOSIZE | flags);
 
-		::SetWindowPos(moveHwnd, NULL, rc.left + addWidth, rc.top, 0, 0, SWP_NOSIZE | flags);
+	RECT rcBrowseBtn{};
+	HWND hBrowseBtn = ::GetDlgItem(_hSelf, IDD_FINDINFILES_BROWSE_BUTTON);
+	getMappedChildRect(hBrowseBtn, rcBrowseBtn);
+	hdwp = setOrDeferWindowPos(hdwp, hBrowseBtn, nullptr, rcSwapBtn.left, rcBrowseBtn.top, 0, 0, SWP_NOSIZE | flags);
+
+	if (!isLessModeOn)
+	{
+		RECT rcTransGrpb{};
+		HWND hTransGrpb = ::GetDlgItem(_hSelf, IDC_TRANSPARENT_GRPBOX);
+		getMappedChildRect(hTransGrpb, rcTransGrpb);
+
+		RECT rcTransCheck{};
+		HWND hTransCheck = ::GetDlgItem(_hSelf, IDC_TRANSPARENT_CHECK);
+		getMappedChildRect(hTransCheck, rcTransCheck);
+
+		RECT rcTransLFRadio{};
+		HWND hTransLFRadio = ::GetDlgItem(_hSelf, IDC_TRANSPARENT_LOSSFOCUS_RADIO);
+		getMappedChildRect(hTransLFRadio, rcTransLFRadio);
+
+		RECT rcTransARadio{};
+		HWND hTransARadio = ::GetDlgItem(_hSelf, IDC_TRANSPARENT_ALWAYS_RADIO);
+		getMappedChildRect(hTransARadio, rcTransARadio);
+
+		RECT rcTransSlider{};
+		HWND hTransSlider = ::GetDlgItem(_hSelf, IDC_PERCENTAGE_SLIDER);
+		getMappedChildRect(hTransSlider, rcTransSlider);
+
+		const int gapTrans = rcTransGrpb.left - rcTransCheck.left;
+		const int gapTransR = rcTransLFRadio.left - rcTransGrpb.left;
+		const int gapTransS = rcTransSlider.left - rcTransGrpb.left;
+
+		::SetWindowPos(hTransGrpb, nullptr, rc2ModeCheck.left - gap - getRcWidth(rcTransGrpb), rcTransGrpb.top, 0, 0, SWP_NOSIZE | flags);
+		getMappedChildRect(hTransGrpb, rcTransGrpb);
+
+		hdwp = setOrDeferWindowPos(hdwp, hTransCheck, nullptr, rcTransGrpb.left - gapTrans, rcTransCheck.top, 0, 0, SWP_NOSIZE | flags);
+		hdwp = setOrDeferWindowPos(hdwp, hTransLFRadio, nullptr, rcTransGrpb.left + gapTransR, rcTransLFRadio.top, 0, 0, SWP_NOSIZE | flags);
+		hdwp = setOrDeferWindowPos(hdwp, hTransARadio, nullptr, rcTransGrpb.left + gapTransR, rcTransARadio.top, 0, 0, SWP_NOSIZE | flags);
+		hdwp = setOrDeferWindowPos(hdwp, hTransSlider, nullptr, rcTransGrpb.left + gapTransS, rcTransSlider.top, 0, 0, SWP_NOSIZE | flags);
 	}
 
-	auto additionalWindowHwndsToResize = { _tab.getHSelf() , _statusBar.getHSelf() };
+	auto hTab = _tab.getHSelf();
+	::GetClientRect(hTab, &rcTmp);
+	hdwp = setOrDeferWindowPos(hdwp, hTab, nullptr, 0, 0, rcClient.right, rcTmp.bottom, SWP_NOMOVE | flags);
 
-	for (HWND resizeHwnd : additionalWindowHwndsToResize)
-	{
-		::GetClientRect(resizeHwnd, &rc);
-		::SetWindowPos(resizeHwnd, NULL, 0, 0, rc.right + addWidth, rc.bottom, SWP_NOMOVE | flags);
-	}
+	if (hdwp)
+		::EndDeferWindowPos(hdwp);
 }
 
 std::mutex findOps_mutex;
@@ -1221,16 +1356,18 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 		{
 			bool isLessModeOn = NppParameters::getInstance().getNppGUI()._findWindowLessMode;
 			MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
-			mmi->ptMinTrackSize.y = isLessModeOn ? _lesssModeHeight : _initialWindowRect.bottom;
-			mmi->ptMinTrackSize.x = _initialWindowRect.right;
-			mmi->ptMaxTrackSize.y = isLessModeOn ? _lesssModeHeight : _initialWindowRect.bottom;
+			mmi->ptMinTrackSize.x = _szMinDialog.cx + _szBorder.cx;
+			const LONG h = (isLessModeOn ? _lesssModeHeight : _szMinDialog.cy) + _szBorder.cy;
+			mmi->ptMinTrackSize.y = h;
+			mmi->ptMaxTrackSize.y = h;
 
-			return 0;
+			return TRUE;
 		}
 
 		case WM_SIZE:
 		{
-			resizeDialogElements(LOWORD(lParam));
+			resizeDialogElements();
+			::SendMessage(_statusBar.getHSelf(), WM_SIZE, 0, 0); // pass WM_SIZE to status bar to automatically adjusts its size
 			return TRUE;
 		}
 
@@ -1368,30 +1505,36 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 			SetWindowLongPtr(cbinfo.hwndItem, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(comboEditProc));
 			SetWindowLongPtr(cbinfo.hwndItem, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cbinfo.hwndCombo));
 
-			if ((NppParameters::getInstance()).getNppGUI()._monospacedFontFindDlg)
+			setDpi();
+
+			HFONT hFont = nullptr;
+			const bool isMonospaced = NppParameters::getInstance().getNppGUI()._monospacedFontFindDlg;
+			if (isMonospaced)
 			{
-				_hMonospaceFont = createFont(TEXT("Courier New"), 8, false, _hSelf);
-
-				SendMessage(hFindCombo, WM_SETFONT, (WPARAM)_hMonospaceFont, MAKELPARAM(true, 0));
-				SendMessage(hReplaceCombo, WM_SETFONT, (WPARAM)_hMonospaceFont, MAKELPARAM(true, 0));
-				SendMessage(hFiltersCombo, WM_SETFONT, (WPARAM)_hMonospaceFont, MAKELPARAM(true, 0));
-				SendMessage(hDirCombo, WM_SETFONT, (WPARAM)_hMonospaceFont, MAKELPARAM(true, 0));
+				hFont = createFont(TEXT("Courier New"), 8, false, _hSelf);
 			}
-
-			DPIManager& dpiManager = NppParameters::getInstance()._dpiManager;
-
+			else
+			{
+				hFont = reinterpret_cast<HFONT>(::SendMessage(hFindCombo, WM_GETFONT, 0, 0));
+			}
+			
 			// Change ComboBox height to accomodate High-DPI settings.
 			// ComboBoxes are scaled using the font used in them, however this results in weird optics
 			// on scaling > 200% (192 DPI). Using this method we accomodate these scalings way better
 			// than the OS does with the current dpiAware.manifest...
-			for (HWND hComboBox : { hFindCombo, hReplaceCombo, hFiltersCombo, hDirCombo })
+
+			LOGFONT lf{};
+			::GetObject(hFont, sizeof(lf), &lf);
+			lf.lfHeight = -(_dpiManager.scale(16) - 5);
+			_hComboBoxFont = ::CreateFontIndirect(&lf);
+
+			for (const auto& hComboBox : { hFindCombo, hReplaceCombo, hFiltersCombo, hDirCombo })
 			{
-				LOGFONT lf = {};
-				HFONT font = reinterpret_cast<HFONT>(SendMessage(hComboBox, WM_GETFONT, 0, 0));
-				::GetObject(font, sizeof(lf), &lf);
-				lf.lfHeight = (dpiManager.scaleY(16) - 5) * -1;
-				SendMessage(hComboBox, WM_SETFONT, (WPARAM)CreateFontIndirect(&lf), MAKELPARAM(true, 0));
+				::SendMessage(hComboBox, WM_SETFONT, reinterpret_cast<WPARAM>(_hComboBoxFont), MAKELPARAM(TRUE, 0));
 			}
+
+			if (isMonospaced && hFont != nullptr)
+				::DeleteObject(hFont);
 
 			 NativeLangSpeaker *pNativeSpeaker = (NppParameters::getInstance()).getNativeLangSpeaker();
 
@@ -1416,11 +1559,11 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 
 			// "⇅" enlargement
 			_hLargerBolderFont = createFont(TEXT("Courier New"), 14, true, _hSelf);
-			SendMessage(_hSwapButton, WM_SETFONT, (WPARAM)_hLargerBolderFont, MAKELPARAM(true, 0));
+			::SendMessage(_hSwapButton, WM_SETFONT, reinterpret_cast<WPARAM>(_hLargerBolderFont), MAKELPARAM(TRUE, 0));
 
 			// Make "˄" & "˅" look better
 			_hCourrierNewFont = createFont(TEXT("Courier New"), 12, false, _hSelf);
-			SendMessage(::GetDlgItem(_hSelf, IDD_RESIZE_TOGGLE_BUTTON), WM_SETFONT, (WPARAM)_hCourrierNewFont, MAKELPARAM(true, 0));
+			::SendDlgItemMessage(_hSelf, IDD_RESIZE_TOGGLE_BUTTON, WM_SETFONT, reinterpret_cast<WPARAM>(_hCourrierNewFont), MAKELPARAM(TRUE, 0));
 
 			return TRUE;
 		}
@@ -1561,7 +1704,113 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 		case NPPM_MODELESSDIALOG :
 			return ::SendMessage(_hParent, NPPM_MODELESSDIALOG, wParam, lParam);
 
-		case WM_COMMAND :
+		case WM_GETDPISCALEDSIZE:
+		{
+			auto newSize = reinterpret_cast<SIZE*>(lParam);
+
+			RECT rcClient{};
+			getClientRect(rcClient);
+
+			const UINT newDpi = static_cast<UINT>(wParam);
+			const UINT prevDpi = _dpiManager.getDpi();
+
+			const bool isLessModeOn = NppParameters::getInstance().getNppGUI()._findWindowLessMode;
+
+			RECT rcStatusBar{};
+			::GetWindowRect(_statusBar.getHSelf(), &rcStatusBar);
+
+			rcClient.right = _dpiManager.scale(rcClient.right - rcClient.left, newDpi, prevDpi);
+			rcClient.bottom = _dpiManager.scale((isLessModeOn ? _lesssModeHeight : _szMinDialog.cy) + (rcStatusBar.bottom - rcStatusBar.top), newDpi, prevDpi);
+
+			LONG xBorder = 0;
+			LONG yBorder = 0;
+
+			const auto style = static_cast<DWORD>(::GetWindowLongPtr(_hSelf, GWL_STYLE));
+			const auto exStyle = static_cast<DWORD>(::GetWindowLongPtr(_hSelf, GWL_EXSTYLE));
+			if (_dpiManager.adjustWindowRectExForDpi(&rcClient, style, FALSE, exStyle, newDpi) == FALSE)
+			{
+				const LONG padding = _dpiManager.getSystemMetricsForDpi(SM_CXPADDEDBORDER, newDpi);
+				xBorder = (_dpiManager.getSystemMetricsForDpi(SM_CXFRAME, newDpi) + padding) * 2;
+				yBorder = (_dpiManager.getSystemMetricsForDpi(SM_CYFRAME, newDpi) + padding) * 2 + _dpiManager.getSystemMetricsForDpi(SM_CYCAPTION, newDpi);
+			}
+
+			newSize->cx = (rcClient.right - rcClient.left) + xBorder;
+			newSize->cy = (rcClient.bottom - rcClient.top) + yBorder;
+
+			if (prevDpi > newDpi)
+			{
+				const auto padding = static_cast<LONG>(_dpiManager.getSystemMetricsForDpi(SM_CXPADDEDBORDER, newDpi));
+				newSize->cx += padding;
+				newSize->cy += padding;
+			}
+
+			return TRUE;
+		}
+
+		case WM_DPICHANGED:
+		{
+			const UINT prevDpi = _dpiManager.getDpi();
+			_dpiManager.setDpiWP(wParam);
+
+			if (_hLargerBolderFont)
+				::DeleteObject(_hLargerBolderFont);
+
+			if (_hCourrierNewFont)
+				::DeleteObject(_hCourrierNewFont);
+
+			if (_hComboBoxFont)
+				::DeleteObject(_hComboBoxFont);
+
+			_hLargerBolderFont = createFont(TEXT("Courier New"), 14, true, _hSelf);
+			::SendMessage(_hSwapButton, WM_SETFONT, reinterpret_cast<WPARAM>(_hLargerBolderFont), MAKELPARAM(TRUE, 0));
+
+			_hCourrierNewFont = createFont(TEXT("Courier New"), 12, false, _hSelf);
+			::SendDlgItemMessage(_hSelf, IDD_RESIZE_TOGGLE_BUTTON, WM_SETFONT, reinterpret_cast<WPARAM>(_hCourrierNewFont), MAKELPARAM(TRUE, 0));
+
+			LOGFONT lf{};
+			HFONT font = reinterpret_cast<HFONT>(::SendDlgItemMessage(_hSelf, IDFINDWHAT, WM_GETFONT, 0, 0));
+			::GetObject(font, sizeof(lf), &lf);
+			lf.lfHeight = -(_dpiManager.scale(16) - 5);
+			_hComboBoxFont = ::CreateFontIndirect(&lf);
+
+			for (auto idComboBox : { IDFINDWHAT, IDREPLACEWITH, IDD_FINDINFILES_FILTERS_COMBO, IDD_FINDINFILES_DIR_COMBO })
+			{
+				::SendDlgItemMessage(_hSelf, idComboBox, WM_SETFONT, reinterpret_cast<WPARAM>(_hComboBoxFont), MAKELPARAM(TRUE, 0));
+			}
+
+			RECT rcStatusBar{};
+			::GetWindowRect(_statusBar.getHSelf(), &rcStatusBar);
+
+			const LONG padding = _dpiManager.getSystemMetricsForDpi(SM_CXPADDEDBORDER);
+			_szBorder.cx = ((_dpiManager.getSystemMetricsForDpi(SM_CXFRAME) + padding) * 2);
+			_szBorder.cy = ((_dpiManager.getSystemMetricsForDpi(SM_CYFRAME) + padding) * 2
+				+ _dpiManager.getSystemMetricsForDpi(SM_CYCAPTION)
+				+ (rcStatusBar.bottom - rcStatusBar.top));
+
+			if (prevDpi > _dpiManager.getDpi())
+			{
+				const auto padding = static_cast<LONG>(_dpiManager.getSystemMetricsForDpi(SM_CXPADDEDBORDER));
+				_szBorder.cx += padding;
+				_szBorder.cy += padding;
+			}
+
+			const UINT dpi = _dpiManager.getDpi();
+			_szMinDialog.cx = _dpiManager.scale(_szMinDialog.cx, dpi, prevDpi);
+			_szMinDialog.cy = _dpiManager.scale(_szMinDialog.cy, dpi, prevDpi);
+			_lesssModeHeight = _dpiManager.scale(_lesssModeHeight, dpi, prevDpi);
+
+			setPositionDpi(lParam, SWP_NOZORDER | SWP_NOACTIVATE);
+
+			_rc.left = 0;
+			_rc.top = 0;
+			_rc.right = _szMinDialog.cx + _szBorder.cx;
+			_rc.bottom = _szMinDialog.cy + _szBorder.cy;
+
+			return TRUE;
+		}
+
+
+		case WM_COMMAND:
 		{
 			bool isMacroRecording = (static_cast<MacroStatus>(::SendMessage(_hParent, NPPM_GETCURRENTMACROSTATUS,0,0)) == MacroStatus::RecordInProgress);
 			NppParameters& nppParamInst = NppParameters::getInstance();
@@ -1735,28 +1984,40 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 
 				case IDM_SEARCH_FIND:
 					if (_currentStatus == FIND_DLG)
+					{
+						moveForDpiChange();
 						goToCenter();
+					}
 					else
 						enableReplaceFunc(false);
 					return TRUE;
 
 				case IDM_SEARCH_REPLACE:
 					if (_currentStatus == REPLACE_DLG)
+					{
+						moveForDpiChange();
 						goToCenter();
+					}
 					else
 						enableReplaceFunc(true);
 					return TRUE;
 
 				case IDM_SEARCH_FINDINFILES:
 					if (_currentStatus == FINDINFILES_DLG)
+					{
+						moveForDpiChange();
 						goToCenter();
+					}
 					else
 						enableFindInFilesFunc();
 					return TRUE;
 
 				case IDM_SEARCH_MARK:
 					if (_currentStatus == MARK_DLG)
+					{
+						moveForDpiChange();
 						goToCenter();
+					}
 					else
 						enableMarkFunc();
 					return TRUE;
@@ -2398,22 +2659,12 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 					LONG w = rc.right - rc.left;
 					bool& isLessModeOn = NppParameters::getInstance().getNppGUI()._findWindowLessMode;
 					isLessModeOn = !isLessModeOn;
-					long dlgH = isLessModeOn ? _lesssModeHeight : _initialWindowRect.bottom;
+					long dlgH = (isLessModeOn ? _lesssModeHeight : _szMinDialog.cy) + _szBorder.cy;
 
 					DIALOG_TYPE dlgT = getCurrentStatus();
 					calcAndSetCtrlsPos(dlgT, true);
 
-					// For unknown reason, the original default width doesn't make the status bar moveed
-					// Here we use a dirty workaround: increase 1 pixel so WM_SIZE message will be triggered
-					if (w == _initialWindowRect.right)
-						w += 1;
-
-					::SetWindowPos(_hSelf, nullptr, 0, 0, w, dlgH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW); // WM_SIZE message to call resizeDialogElements - status bar will be reposition correctly.
-
-					// Reposition the status bar
-					constexpr UINT flags = SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOCOPYBITS | SWP_FRAMECHANGED;
-					::GetClientRect(_statusBar.getHSelf(), &rc);
-					::SetWindowPos(_statusBar.getHSelf(), nullptr, 0, 0, w, rc.bottom, flags);
+					::SetWindowPos(_hSelf, nullptr, 0, 0, w, dlgH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW);
 
 					hideOrShowCtrl4reduceOrNormalMode(dlgT);
 
@@ -4483,18 +4734,20 @@ void FindReplaceDlg::calcAndSetCtrlsPos(DIALOG_TYPE dlgT, bool fromColBtn)
 
 	if (fromColBtn)
 	{
-		LONG yColBtn = 0;
+		RECT rc2ModeCheck{};
+		getMappedChildRect(IDC_2_BUTTONS_MODE, rc2ModeCheck);
+		LONG yColBtn = btnGap / 2;
 		if (isNotLessMode)
 		{
 			RECT rcSlider{};
 			getMappedChildRect(IDC_PERCENTAGE_SLIDER, rcSlider);
-			yColBtn = rcSlider.top + btnGap;
+			yColBtn += rcSlider.top;
 		}
 		else
 		{
-			yColBtn = rcBtn2ndPos.top + btnGap / 2;
+			yColBtn += rcBtn2ndPos.top;
 		}
-		::SetWindowPos(::GetDlgItem(_hSelf, IDD_RESIZE_TOGGLE_BUTTON), nullptr, rcBtn2ndPos.right + btnGap, yColBtn, 0, 0, SWP_NOSIZE | flags);
+		::SetWindowPos(::GetDlgItem(_hSelf, IDD_RESIZE_TOGGLE_BUTTON), nullptr, rc2ModeCheck.left, yColBtn, 0, 0, SWP_NOSIZE | flags);
 	}
 }
 
@@ -4609,7 +4862,7 @@ void FindReplaceDlg::combo2ExtendedMode(int comboID)
 		::SendDlgItemMessage(_hSelf, IDREGEXP, BM_SETCHECK, FALSE, 0);
 
 		delete [] newBuffer;
-    }
+	}
 }
 
 void FindReplaceDlg::drawItem(LPDRAWITEMSTRUCT lpDrawItemStruct)
