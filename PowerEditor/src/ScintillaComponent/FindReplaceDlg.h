@@ -399,6 +399,8 @@ public :
 	DIALOG_TYPE getCurrentStatus() {return _currentStatus;};
 	Finder* getFinderFrom(HWND hwnd);
 
+	int regexBackwardMsgBox();
+
 protected :
 	void resizeDialogElements();
 	intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
@@ -458,7 +460,7 @@ private:
 	std::vector<int> _reduce2hide_findReplace = { IDC_IN_SELECTION_CHECK, IDC_REPLACEINSELECTION, IDREPLACEALL, IDCANCEL };
 	std::vector<int> _reduce2hide_fif = { IDD_FINDINFILES_FILTERS_STATIC, IDD_FINDINFILES_FILTERS_COMBO, IDCANCEL };
 	std::vector<int> _reduce2hide_fip = { IDD_FINDINFILES_FILTERS_STATIC, IDD_FINDINFILES_FILTERS_COMBO, IDCANCEL };
-	std::vector<int> _reduce2hide_mark = { IDC_MARKLINE_CHECK, IDC_PURGE_CHECK, IDC_IN_SELECTION_CHECK, IDC_COPY_MARKED_TEXT, IDCANCEL };
+	std::vector<int> _reduce2hide_mark = { IDC_MARKLINE_CHECK, IDC_PURGE_CHECK, IDC_IN_SELECTION_CHECK, IDC_REPLACEINSELECTION, IDC_COPY_MARKED_TEXT, IDCANCEL };
 
 	void enableFindDlgItem(int dlgItemID, bool isEnable = true);
 	void showFindDlgItem(int dlgItemID, bool isShow = true);
@@ -572,10 +574,7 @@ private:
 	static const TCHAR cClassName[];
 	static const TCHAR cDefaultHeader[];
 	static const int cBackgroundColor;
-	static const int cPBwidth;
-	static const int cPBheight;
-	static const int cBTNwidth;
-	static const int cBTNheight;
+	static const SIZE _szClient;
 
 	static volatile LONG refCount;
 
@@ -584,6 +583,10 @@ private:
 
 	int thread();
 	int createProgressWindow();
+
+	RECT getDpiScaledWindowRect(UINT dpi) const;
+	void setCtrlsPos();
+	void setFont();
 
 	HINSTANCE _hInst = nullptr;
 	volatile HWND _hwnd = nullptr;
@@ -597,4 +600,6 @@ private:
 	HWND _hPBar = nullptr;
 	HWND _hBtn = nullptr;
 	HFONT _hFont = nullptr;
+
+	DPIManagerV2 _dpiManager;
 };

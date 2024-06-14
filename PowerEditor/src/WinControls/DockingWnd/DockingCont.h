@@ -42,6 +42,8 @@ enum eMousePos {
 #define CLOSEBTN_POS_LEFT	3
 #define CLOSEBTN_POS_TOP	3
 
+constexpr int g_dockingContTabIconSize = 16;
+constexpr int g_dockingContTabIconPadding = 3;
 
 class DockingCont : public StaticDialog
 {
@@ -117,15 +119,15 @@ public:
 		updateCaption();
 	};
 
-	void setTabStyle(const BOOL & bDrawOgLine) {
-		_bDrawOgLine = bDrawOgLine;
-		::RedrawWindow(_hContTab, nullptr, nullptr, RDW_INVALIDATE);
-	};
-
-	void destroy() override{
-		for (int iTb = static_cast<int>(_vTbData.size()); iTb > 0; iTb--)
+	void destroy() override {
+		for (auto& tTbData : _vTbData)
 		{
-			delete _vTbData[iTb-1];
+			if (tTbData->hIconTab != nullptr)
+			{
+				::DestroyIcon(tTbData->hIconTab);
+				tTbData->hIconTab = nullptr;
+			}
+			delete tTbData;
 		}
 		::DestroyWindow(_hSelf);
 	};
@@ -190,9 +192,6 @@ private:
 	BOOL _isMouseClose = FALSE;
 	BOOL _isMouseOver = FALSE;
 	RECT _rcCaption{};
-	
-	// tab style
-	BOOL _bDrawOgLine = TRUE;
 
 	// Important value for DlgMoving class
 	BOOL _dragFromTab = FALSE;

@@ -120,25 +120,18 @@ class FileBrowser : public DockingDlgInterface {
 public:
 	FileBrowser(): DockingDlgInterface(IDD_FILEBROWSER) {};
 	~FileBrowser();
-	void init(HINSTANCE hInst, HWND hPere) {
-		DockingDlgInterface::init(hInst, hPere);
-	}
 
-    virtual void display(bool toShow = true) const {
-        DockingDlgInterface::display(toShow);
-    };
+	void setParent(HWND parent2set){
+		_hParent = parent2set;
+	};
 
-    void setParent(HWND parent2set){
-        _hParent = parent2set;
-    };
-
-	virtual void setBackgroundColor(COLORREF bgColour) {
+	void setBackgroundColor(COLORREF bgColour) override {
 		TreeView_SetBkColor(_treeView.getHSelf(), bgColour);
-    };
+	};
 
-	virtual void setForegroundColor(COLORREF fgColour) {
+	void setForegroundColor(COLORREF fgColour) override {
 		TreeView_SetTextColor(_treeView.getHSelf(), fgColour);
-    };
+	};
 
 	generic_string getNodePath(HTREEITEM node) const;
 	generic_string getNodeName(HTREEITEM node) const;
@@ -162,6 +155,7 @@ public:
 
 protected:
 	HWND _hToolbarMenu = nullptr;
+	std::vector<HIMAGELIST> _iconListVector;
 
 	TreeView _treeView;
 	HIMAGELIST _hImaLst = nullptr;
@@ -207,7 +201,7 @@ protected:
 
 	void removeNamesAlreadyInNode(HTREEITEM parent, std::vector<generic_string> & labels) const;
 
-	virtual intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam);
+	intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 	void notified(LPNMHDR notification);
 	void showContextMenu(int x, int y);
 	void openSelectFile();

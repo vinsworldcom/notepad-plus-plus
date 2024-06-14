@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #include <memory>
+#include <bitset>
 #include <shlwapi.h>
 #include <cinttypes>
 #include <windowsx.h>
@@ -163,11 +164,9 @@ LanguageNameInfo ScintillaEditView::_langNameInfoArray[L_EXTERNAL + 1] = {
 };
 
 
-int getNbDigits(int aNum, int base)
+size_t getNbDigits(size_t aNum, size_t base)
 {
-	if (base <= 0) return 0;
-
-	int nbDigits = 0;
+	size_t nbDigits = 0;
 
 	do
 	{
@@ -2050,6 +2049,7 @@ void ScintillaEditView::defineDocType(LangType typeDoc)
 	{
 		setSpecialStyle(*pStyle);
 	}
+	
 	setTabSettings(NppParameters::getInstance().getLangFromID(typeDoc));
 	
 	if (svp._indentGuideLineShow)
@@ -2787,14 +2787,16 @@ void ScintillaEditView::addText(size_t length, const char *buf)
 
 void ScintillaEditView::beginOrEndSelect(bool isColumnMode)
 {
+	auto currPos = execute(SCI_GETCURRENTPOS);
+
 	if (_beginSelectPosition == -1)
 	{
-		_beginSelectPosition = execute(SCI_GETCURRENTPOS);
+		_beginSelectPosition = currPos;
 	}
 	else
 	{
-		execute(SCI_SETSELECTIONMODE, static_cast<WPARAM>(isColumnMode ? SC_SEL_RECTANGLE : SC_SEL_STREAM));
-		execute(SCI_SETANCHOR, static_cast<WPARAM>(_beginSelectPosition));
+		execute(SCI_CHANGESELECTIONMODE, static_cast<WPARAM>(isColumnMode ? SC_SEL_RECTANGLE : SC_SEL_STREAM));
+		execute(isColumnMode ? SCI_SETANCHOR : SCI_SETSEL, static_cast<WPARAM>(_beginSelectPosition), static_cast<LPARAM>(currPos));
 		_beginSelectPosition = -1;
 	}
 }
@@ -3658,92 +3660,6 @@ bool ScintillaEditView::expandWordSelection()
 	return false;
 }
 
-TCHAR* int2str(TCHAR* str, int strLen, int number, int base, int nbDigits, ColumnEditorParam::leadingChoice lead)
-{
-	if (nbDigits <= 0 || nbDigits >= strLen) return NULL;
-
-	if (base == 2)
-	{
-		const unsigned int MASK_ULONG_BITFORT = 0x80000000;
-		int nbBits = sizeof(unsigned int) * 8;
-		int nbBit2Shift = (nbDigits >= nbBits) ? nbBits : (nbBits - nbDigits);
-		unsigned long mask = MASK_ULONG_BITFORT >> nbBit2Shift;
-		int i = 0;
-		for (; mask > 0; ++i)
-		{
-			str[i] = (mask & number) ? '1' : '0';
-			mask >>= 1;
-		}
-		str[i] = '\0';
-		// str is now leading zero padded
-
-		if (lead == ColumnEditorParam::spaceLeading)
-		{
-			// replace leading zeros with spaces
-			for (TCHAR* j = str; *j != '\0'; ++j)
-			{
-				if ((*j == '1') || (*(j + 1) == '\0'))
-				{
-					break;
-				}
-				else
-				{
-					*j = ' ';
-				}
-			}
-		}
-		else if (lead != ColumnEditorParam::zeroLeading)
-		{
-			// left-align within the field width, i.e. pad on right with space
-
-			// first, remove leading zeros
-			for (TCHAR* j = str; *j != '\0'; ++j)
-			{
-				if (*j == '1' || *(j + 1) == '\0')
-				{
-					wcscpy_s(str, strLen, j);
-					break;
-				}
-			}
-			// add trailing spaces to pad out to field width
-			int i = lstrlen(str);
-			for (; i < nbDigits; ++i)
-			{
-				str[i] = ' ';
-			}
-			str[i] = '\0';
-		}
-	}
-	else
-	{
-		constexpr size_t bufSize = 64;
-		TCHAR f[bufSize] = { '\0' };
-
-		TCHAR fStr[2] = TEXT("d");
-		if (base == 16)
-			fStr[0] = 'X';
-		else if (base == 8)
-			fStr[0] = 'o';
-
-		if (lead == ColumnEditorParam::zeroLeading)
-		{
-			swprintf(f, bufSize, TEXT("%%.%d%s"), nbDigits, fStr);
-		}
-		else if (lead == ColumnEditorParam::spaceLeading)
-		{
-			swprintf(f, bufSize, TEXT("%%%d%s"), nbDigits, fStr);
-		}
-		else
-		{
-			// left-align within the field width, i.e. pad on right with space
-			swprintf(f, bufSize, TEXT("%%-%d%s"), nbDigits, fStr);
-		}
-		// use swprintf (or sprintf) instead of wsprintf to make octal format work!
-		swprintf(str, strLen, f, number);
-	}
-
-	return str;
-}
 
 ColumnModeInfos ScintillaEditView::getColumnModeSelectInfo()
 {
@@ -3821,7 +3737,7 @@ void ScintillaEditView::columnReplace(ColumnModeInfos & cmi, const TCHAR *str)
 	}
 }
 
-void ScintillaEditView::columnReplace(ColumnModeInfos & cmi, int initial, int incr, int repeat, UCHAR format, ColumnEditorParam::leadingChoice lead)
+void ScintillaEditView::columnReplace(ColumnModeInfos & cmi, size_t initial, size_t incr, size_t repeat, UCHAR format, ColumnEditorParam::leadingChoice lead)
 {
 	assert(repeat > 0);
 
@@ -3849,32 +3765,29 @@ void ScintillaEditView::columnReplace(ColumnModeInfos & cmi, int initial, int in
 		base = 2;
 
 	const int stringSize = 512;
-	TCHAR str[stringSize];
+	char str[stringSize];
 
 	// Compute the numbers to be placed at each column.
-	std::vector<int> numbers;
+	std::vector<size_t> numbers;
+
+	size_t curNumber = initial;
+	const size_t kiMaxSize = cmi.size();
+	while (numbers.size() < kiMaxSize)
 	{
-		int curNumber = initial;
-		const size_t kiMaxSize = cmi.size();
-		while (numbers.size() < kiMaxSize)
+		for (size_t i = 0; i < repeat; i++)
 		{
-			for (int i = 0; i < repeat; i++)
+			numbers.push_back(curNumber);
+			if (numbers.size() >= kiMaxSize)
 			{
-				numbers.push_back(curNumber);
-				if (numbers.size() >= kiMaxSize)
-				{
-					break;
-				}
+				break;
 			}
-			curNumber += incr;
 		}
+		curNumber += incr;
 	}
 
-	assert(numbers.size()> 0);
-
-	const int kibEnd = getNbDigits(*numbers.rbegin(), base);
-	const int kibInit = getNbDigits(initial, base);
-	const int kib = std::max<int>(kibInit, kibEnd);
+	const size_t kibEnd = getNbDigits(*numbers.rbegin(), base);
+	const size_t kibInit = getNbDigits(initial, base);
+	const size_t kib = std::max<size_t>(kibInit, kibEnd);
 
 	intptr_t totalDiff = 0;
 	const size_t len = cmi.size();
@@ -3888,7 +3801,7 @@ void ScintillaEditView::columnReplace(ColumnModeInfos & cmi, int initial, int in
 			cmi[i]._selLpos += totalDiff;
 			cmi[i]._selRpos += totalDiff;
 
-			int2str(str, stringSize, numbers.at(i), base, kib, lead);
+			variedFormatNumber2String<char>(str, stringSize, numbers.at(i), base, kib, lead);
 
 			const bool hasVirtualSpc = cmi[i]._nbVirtualAnchorSpc > 0;
 			if (hasVirtualSpc) // if virtual space is present, then insert space
@@ -3901,15 +3814,11 @@ void ScintillaEditView::columnReplace(ColumnModeInfos & cmi, int initial, int in
 				cmi[i]._selRpos += cmi[i]._nbVirtualCaretSpc;
 			}
 			execute(SCI_SETTARGETRANGE, cmi[i]._selLpos, cmi[i]._selRpos);
-
-			WcharMbcsConvertor& wmc = WcharMbcsConvertor::getInstance();
-			size_t cp = execute(SCI_GETCODEPAGE);
-			const char *strA = wmc.wchar2char(str, cp);
-			execute(SCI_REPLACETARGET, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(strA));
+			execute(SCI_REPLACETARGET, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(str));
 
 			if (hasVirtualSpc)
 			{
-				totalDiff += cmi[i]._nbVirtualAnchorSpc + lstrlen(str);
+				totalDiff += cmi[i]._nbVirtualAnchorSpc + strlen(str);
 				// Now there's no more virtual space
 				cmi[i]._nbVirtualAnchorSpc = 0;
 				cmi[i]._nbVirtualCaretSpc = 0;
@@ -4211,25 +4120,30 @@ void ScintillaEditView::runMarkers(bool doHide, size_t searchStart, bool endOfDo
 }
 
 
-void ScintillaEditView::setTabSettings(Lang *lang)
+void ScintillaEditView::setTabSettings(Lang* lang)
 {
 	if (lang && lang->_tabSize != -1 && lang->_tabSize != 0)
 	{
 		if (lang->_langID == L_JAVASCRIPT)
 		{
-			Lang *ljs = NppParameters::getInstance().getLangFromID(L_JS);
+			Lang* ljs = NppParameters::getInstance().getLangFromID(L_JS);
 			execute(SCI_SETTABWIDTH, ljs->_tabSize > 0 ? ljs->_tabSize : lang->_tabSize);
 			execute(SCI_SETUSETABS, !ljs->_isTabReplacedBySpace);
-			return;
+			execute(SCI_SETBACKSPACEUNINDENTS, ljs->_isBackspaceUnindent);
 		}
-		execute(SCI_SETTABWIDTH, lang->_tabSize);
-		execute(SCI_SETUSETABS, !lang->_isTabReplacedBySpace);
+		else
+		{
+			execute(SCI_SETTABWIDTH, lang->_tabSize);
+			execute(SCI_SETUSETABS, !lang->_isTabReplacedBySpace);
+			execute(SCI_SETBACKSPACEUNINDENTS, lang->_isBackspaceUnindent);
+		}
 	}
-    else
+	else
 	{
-		const NppGUI & nppgui = NppParameters::getInstance().getNppGUI();
-		execute(SCI_SETTABWIDTH, nppgui._tabSize  > 0 ? nppgui._tabSize : 4);
+		const NppGUI& nppgui = NppParameters::getInstance().getNppGUI();
+		execute(SCI_SETTABWIDTH, nppgui._tabSize > 0 ? nppgui._tabSize : 4);
 		execute(SCI_SETUSETABS, !nppgui._tabReplacedBySpace);
+		execute(SCI_SETBACKSPACEUNINDENTS, nppgui._backspaceUnindent);
 	}
 }
 

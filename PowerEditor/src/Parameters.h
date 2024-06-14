@@ -32,6 +32,7 @@
 #include <map>
 #include "ILexer.h"
 #include "Lexilla.h"
+#include "DockingCont.h"
 
 #ifdef _WIN64
 
@@ -325,10 +326,11 @@ struct CmdLineParamsDTO
 	}
 };
 
+#define FWI_PANEL_WH_DEFAULT 100
 struct FloatingWindowInfo
 {
 	int _cont = 0;
-	RECT _pos = {};
+	RECT _pos = { 0, 0, FWI_PANEL_WH_DEFAULT, FWI_PANEL_WH_DEFAULT };
 
 	FloatingWindowInfo(int cont, int x, int y, int w, int h)
 		: _cont(cont)
@@ -370,27 +372,32 @@ struct ContainerTabInfo final
 };
 
 
+#define DMD_PANEL_WH_DEFAULT 200
 struct DockingManagerData final
 {
-	int _leftWidth = 200;
-	int _rightWidth = 200;
-	int _topHeight = 200;
-	int _bottomHight = 200;
+	int _leftWidth = DMD_PANEL_WH_DEFAULT;
+	int _rightWidth = DMD_PANEL_WH_DEFAULT;
+	int _topHeight = DMD_PANEL_WH_DEFAULT;
+	int _bottomHeight = DMD_PANEL_WH_DEFAULT;
 
-	std::vector<FloatingWindowInfo> _flaotingWindowInfo;
+	// will be updated at runtime (Notepad_plus::init & DockingManager::runProc DMM_MOVE_SPLITTER)
+	LONG _minDockedPanelVisibility = HIGH_CAPTION; 
+	SIZE _minFloatingPanelSize = { (HIGH_CAPTION) * 6, HIGH_CAPTION };
+
+	std::vector<FloatingWindowInfo> _floatingWindowInfo;
 	std::vector<PluginDlgDockingInfo> _pluginDockInfo;
 	std::vector<ContainerTabInfo> _containerTabInfo;
 
 	bool getFloatingRCFrom(int floatCont, RECT& rc) const
 	{
-		for (size_t i = 0, fwiLen = _flaotingWindowInfo.size(); i < fwiLen; ++i)
+		for (size_t i = 0, fwiLen = _floatingWindowInfo.size(); i < fwiLen; ++i)
 		{
-			if (_flaotingWindowInfo[i]._cont == floatCont)
+			if (_floatingWindowInfo[i]._cont == floatCont)
 			{
-				rc.left   = _flaotingWindowInfo[i]._pos.left;
-				rc.top	= _flaotingWindowInfo[i]._pos.top;
-				rc.right  = _flaotingWindowInfo[i]._pos.right;
-				rc.bottom = _flaotingWindowInfo[i]._pos.bottom;
+				rc.left   = _floatingWindowInfo[i]._pos.left;
+				rc.top	= _floatingWindowInfo[i]._pos.top;
+				rc.right  = _floatingWindowInfo[i]._pos.right;
+				rc.bottom = _floatingWindowInfo[i]._pos.bottom;
 				return true;
 			}
 		}
@@ -786,6 +793,7 @@ struct NppGUI final
 
 	int _tabSize = 4;
 	bool _tabReplacedBySpace = false;
+	bool _backspaceUnindent = false;
 
 	bool _finderLinesAreCurrentlyWrapped = false;
 	bool _finderPurgeBeforeEverySearch = false;
@@ -1034,6 +1042,7 @@ struct Lang final
 
 	bool _isTabReplacedBySpace = false;
 	int _tabSize = -1;
+	bool _isBackspaceUnindent = false;
 
 	Lang()
 	{
@@ -1063,13 +1072,15 @@ struct Lang final
 		_pCommentEnd = commentEnd;
 	}
 
-	void setTabInfo(int tabInfo)
+	void setTabInfo(int tabInfo, bool isBackspaceUnindent)
 	{
 		if (tabInfo != -1 && tabInfo & MASK_TabSize)
 		{
 			_isTabReplacedBySpace = (tabInfo & MASK_ReplaceBySpc) != 0;
 			_tabSize = tabInfo & MASK_TabSize;
 		}
+
+		_isBackspaceUnindent = isBackspaceUnindent;
 	}
 
 	const TCHAR * getDefaultExtList() const {
@@ -1530,7 +1541,7 @@ public:
 	void createXmlTreeFromGUIParams();
 
 	std::wstring writeStyles(LexerStylerArray & lexersStylers, StyleArray & globalStylers); // return "" if saving file succeeds, otherwise return the new saved file path
-	bool insertTabInfo(const TCHAR *langName, int tabInfo);
+	bool insertTabInfo(const TCHAR* langName, int tabInfo, bool backspaceUnindent);
 
 	LexerStylerArray & getLStylerArray() {return _lexerStylerVect;};
 	StyleArray & getGlobalStylers() {return _widgetStyleArray;};
