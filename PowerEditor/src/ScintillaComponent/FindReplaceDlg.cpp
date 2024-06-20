@@ -347,7 +347,7 @@ void FindReplaceDlg::create(int dialogID, bool isRTL, bool msgDestParent, bool t
 	{
 		RECT rc = getViewablePositionRect(nppGUI._findWindowPos);
 		::SetWindowPos(_hSelf, HWND_TOP, rc.left, rc.top, 0, 0, SWP_HIDEWINDOW | SWP_NOSIZE | SWP_NOACTIVATE);
-		::SetWindowPos(_hSelf, HWND_TOP, 0, 0, _rc.right - _rc.left, _rc.bottom - _rc.top, swpFlags | SWP_NOMOVE);
+		::SetWindowPos(_hSelf, HWND_TOP, 0, 0, rc.right - rc.left, _rc.bottom - _rc.top, swpFlags | SWP_NOMOVE);
 
 		if ((swpFlags & SWP_SHOWWINDOW) == SWP_SHOWWINDOW)
 			::SendMessageW(_hSelf, DM_REPOSITION, 0, 0);
@@ -654,7 +654,7 @@ void Finder::deleteResult()
 	if (_scintView.execute(SCI_GETFOLDLEVEL, lno) & SC_FOLDLEVELHEADERFLAG)  // delete a folder
 	{
 		auto endline = _scintView.execute(SCI_GETLASTCHILD, lno, -1) + 1;
-		assert((size_t) endline <= _pMainFoundInfos->size());
+		if ((size_t)endline > _pMainFoundInfos->size()) return;
 
 		_pMainFoundInfos->erase(_pMainFoundInfos->begin() + lno, _pMainFoundInfos->begin() + endline); // remove found info
 		_pMainMarkings->erase(_pMainMarkings->begin() + lno, _pMainMarkings->begin() + endline);
@@ -667,7 +667,7 @@ void Finder::deleteResult()
 	}
 	else // delete one line
 	{
-		assert((size_t) lno < _pMainFoundInfos->size());
+		if ((size_t)lno >= _pMainFoundInfos->size()) return;
 
 		_pMainFoundInfos->erase(_pMainFoundInfos->begin() + lno); // remove found info
 		_pMainMarkings->erase(_pMainMarkings->begin() + lno);
@@ -841,7 +841,7 @@ void Finder::gotoNextFoundResult(int direction)
 	auto init_lno = lno;
 	auto max_lno = _scintView.execute(SCI_GETLASTCHILD, lno, searchHeaderLevel);
 
-	assert(max_lno <= total_lines - 2);
+	if (max_lno > total_lines - 2) return;
 
 	// get the line number of the current search (searchHeaderLevel)
 	int level = _scintView.execute(SCI_GETFOLDLEVEL, lno) & SC_FOLDLEVELNUMBERMASK;
@@ -905,6 +905,9 @@ void Finder::gotoNextFoundResult(int direction)
 		{
 			case pos_infront: // 2 situation: 
 			{
+				if (!markingLine._segmentPostions.size())
+					return;
+
 				if (markingLine._segmentPostions[0].second < SC_SEARCHRESULT_LINEBUFFERMAXLENGTH) // 1. The occurrence is displayed in the line
 				{
 					occurrenceNumberInLine_base1 = 1;
@@ -947,6 +950,7 @@ void Finder::gotoNextFoundResult(int direction)
 			case pos_infront:
 			{
 				lno--;
+				if (lno < 0) return;
 				anchorWithNoHeaderLines(lno, init_lno, min_lno, max_lno, direction);
 				const SearchResultMarkingLine& newMarkingLine = *(_pMainMarkings->begin() + lno);
 				occurrenceNumberInLine_base1 = newMarkingLine._segmentPostions.size();
@@ -966,6 +970,7 @@ void Finder::gotoNextFoundResult(int direction)
 				else
 				{
 					lno--;
+					if (lno < 0) return;
 					anchorWithNoHeaderLines(lno, init_lno, min_lno, max_lno, direction);
 					const SearchResultMarkingLine& newMarkingLine = *(_pMainMarkings->begin() + lno);
 					occurrenceNumberInLine_base1 = newMarkingLine._segmentPostions.size();
@@ -4982,17 +4987,8 @@ void FindReplaceDlg::drawItem(LPDRAWITEMSTRUCT lpDrawItemStruct)
 	}
 
 	SetTextColor(lpDrawItemStruct->hDC, fgColor);
+	::SetBkMode(lpDrawItemStruct->hDC, TRANSPARENT);
 
-	COLORREF bgColor;
-	if (NppDarkMode::isEnabled())
-	{
-		bgColor = NppDarkMode::getBackgroundColor();
-	}
-	else
-	{
-		bgColor = getCtrlBgColor(_statusBar.getHSelf());
-	}
-	::SetBkColor(lpDrawItemStruct->hDC, bgColor);
 	RECT rect{};
 	_statusBar.getClientRect(rect);
 

@@ -28,6 +28,7 @@
 #include <commctrl.h>
 #include "Window.h"
 #include "dpiManagerV2.h"
+#include "DoubleBuffer.h"
 
 //Notification message
 #define TCN_TABDROPPED (TCN_FIRST - 10)
@@ -228,6 +229,8 @@ public :
 	void currentTabToStart();
 	void currentTabToEnd();
 
+	void setCloseBtnImageList();
+
 protected:
     // it's the boss to decide if we do the drag N drop
     static bool _doDragNDrop;
@@ -241,11 +244,13 @@ protected:
 	int _previousTabSwapped = -1;
 	POINT _draggingPoint{}; // coordinate of Screen
 	WNDPROC _tabBarDefaultProc = nullptr;
+	DoubleBuffer _dblBuf;
 
 	RECT _currentHoverTabRect{};
 	int _currentHoverTabItem = -1; // -1 : no mouse on any tab
 
 	CloseButtonZone _closeButtonZone;
+	HIMAGELIST _hCloseBtnImgLst = nullptr;
 	bool _isCloseHover = false;
 	int _whichCloseClickDown = -1;
 	bool _lmbdHit = false; // Left Mouse Button Down Hit

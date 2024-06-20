@@ -270,6 +270,12 @@ void TabBarPlus::destroy()
 	TabBar::destroy();
 	::DestroyWindow(_tooltips);
 	_tooltips = NULL;
+
+	if (_hCloseBtnImgLst != nullptr)
+	{
+		::ImageList_Destroy(_hCloseBtnImgLst);
+		_hCloseBtnImgLst = nullptr;
+	}
 }
 
 
@@ -339,6 +345,8 @@ void TabBarPlus::init(HINSTANCE hInst, HWND parent, bool isVertical, bool isMult
 	_tabBarDefaultProc = reinterpret_cast<WNDPROC>(::SetWindowLongPtr(_hSelf, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(TabBarPlus_Proc)));
 
 	setFont();
+
+	setCloseBtnImageList();
 }
 
 void TabBar::setFont()
@@ -450,6 +458,34 @@ void TabBarPlus::currentTabToEnd()
 	{
 		exchangeTabItemData(i, j);
 	}
+}
+
+void TabBarPlus::setCloseBtnImageList()
+{
+	if (_hCloseBtnImgLst != nullptr)
+	{
+		::ImageList_Destroy(_hCloseBtnImgLst);
+		_hCloseBtnImgLst = nullptr;
+	}
+
+	const int btnSize = _dpiManager.scale(g_TabCloseBtnSize);
+
+	const auto idsCloseIcons = {
+		IDR_CLOSETAB, IDR_CLOSETAB_INACT, IDR_CLOSETAB_HOVER, IDR_CLOSETAB_PUSH,
+		IDR_CLOSETAB_DM, IDR_CLOSETAB_INACT_DM, IDR_CLOSETAB_HOVER_DM, IDR_CLOSETAB_PUSH_DM };
+
+	_hCloseBtnImgLst = ::ImageList_Create(btnSize, btnSize, ILC_COLOR32 | ILC_MASK, static_cast<int>(idsCloseIcons.size()), 0);
+
+	for (const auto& id : idsCloseIcons)
+	{
+		HICON hIcon = nullptr;
+		DPIManagerV2::loadIcon(_hInst, MAKEINTRESOURCE(id), btnSize, btnSize, &hIcon);
+		::ImageList_AddIcon(_hCloseBtnImgLst, hIcon);
+		::DestroyIcon(hIcon);
+	}
+
+	_closeButtonZone._width = btnSize;
+	_closeButtonZone._height = btnSize;
 }
 
 void TabBarPlus::doVertical()
@@ -915,35 +951,29 @@ LRESULT TabBarPlus::runProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lPara
 
 		case WM_ERASEBKGND:
 		{
-			if (!NppDarkMode::isEnabled())
-			{
-				break;
-			}
-
-			RECT rc{};
-			GetClientRect(hwnd, &rc);
-			FillRect((HDC)wParam, &rc, NppDarkMode::getDarkerBackgroundBrush());
-
-			return 1;
+			// Skip background erasing and set fErase in PAINTSTRUCT instead,
+			// WM_PAINT does all the painting in all cases
+			return FALSE;
 		}
 
 		case WM_PAINT:
 		{
-			if (!NppDarkMode::isEnabled())
-			{
-				break;
-			}
+			PAINTSTRUCT ps{};
+			HDC hdc = _dblBuf.beginPaint(hwnd, &ps);
 
 			LONG_PTR dwStyle = GetWindowLongPtr(hwnd, GWL_STYLE);
-			if (!(dwStyle & TCS_OWNERDRAWFIXED))
+			if (!NppDarkMode::isEnabled() || !(dwStyle & TCS_OWNERDRAWFIXED))
 			{
-				break;
+				// Even if the tab bar common control is used directly, e.g. in non-dark mode,
+				// it suffers from flickering during updates, so let it paint into a back buffer
+				::DefWindowProc(hwnd, WM_ERASEBKGND, reinterpret_cast<WPARAM>(hdc), 0);
+				::DefWindowProc(hwnd, WM_PRINT, reinterpret_cast<WPARAM>(hdc), PRF_NONCLIENT | PRF_CLIENT);
+				_dblBuf.endPaint(hwnd, &ps);
+				return 0;
 			}
 
 			const bool hasMultipleLines = ((dwStyle & TCS_BUTTONS) == TCS_BUTTONS);
 
-			PAINTSTRUCT ps{};
-			HDC hdc = BeginPaint(hwnd, &ps);
 			FillRect(hdc, &ps.rcPaint, NppDarkMode::getDarkerBackgroundBrush());
 
 			UINT id = ::GetDlgCtrlID(hwnd);
@@ -1072,7 +1102,7 @@ LRESULT TabBarPlus::runProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lPara
 
 			SelectObject(hdc, holdPen);
 
-			EndPaint(hwnd, &ps);
+			_dblBuf.endPaint(hwnd, &ps);
 			return 0;
 		}
 
@@ -1270,36 +1300,31 @@ void TabBarPlus::drawItem(DRAWITEMSTRUCT *pDrawItemStruct, bool isDarkMode)
 	}
 
 	// draw close button
-	if (_drawTabCloseButton)
+	if (_drawTabCloseButton && _hCloseBtnImgLst != nullptr)
 	{
 		// 3 status for each inactive tab and selected tab close item :
 		// normal / hover / pushed
-		int idCloseImg;
+		int idxCloseImg = isDarkMode ? 4 : 0; // selected
 
-		if (_isCloseHover && (_currentHoverTabItem == nTab) && (_whichCloseClickDown == -1)) // hover
-			idCloseImg = isDarkMode ? IDR_CLOSETAB_HOVER_DM : IDR_CLOSETAB_HOVER;
-		else if (_isCloseHover && (_currentHoverTabItem == nTab) && (_whichCloseClickDown == _currentHoverTabItem)) // pushed
-			idCloseImg = isDarkMode ? IDR_CLOSETAB_PUSH_DM : IDR_CLOSETAB_PUSH;
-		else
-			idCloseImg = isSelected ? (isDarkMode ? IDR_CLOSETAB_DM : IDR_CLOSETAB) : (isDarkMode ? IDR_CLOSETAB_INACT_DM : IDR_CLOSETAB_INACT);
-
-		HDC hdcMemory = ::CreateCompatibleDC(hDC);
-		HBITMAP hBmp = ::LoadBitmap(_hInst, MAKEINTRESOURCE(idCloseImg));
-		BITMAP bmp{};
-		::GetObject(hBmp, sizeof(bmp), &bmp);
-
-		_closeButtonZone._width = _dpiManager.scale(bmp.bmWidth);
-		_closeButtonZone._height = _dpiManager.scale(bmp.bmHeight);
+		if (_isCloseHover && (_currentHoverTabItem == nTab))
+		{
+			if (_whichCloseClickDown == -1) // hover
+			{
+				idxCloseImg += 2;
+			}
+			else if (_whichCloseClickDown == _currentHoverTabItem) // pushed
+			{
+				idxCloseImg += 3;
+			}
+		}
+		else if (!isSelected) // inactive
+		{
+			idxCloseImg += 1;
+		}
 
 		RECT buttonRect = _closeButtonZone.getButtonRectFrom(rect, _isVertical);
-		
-		// StretchBlt will crop image in RTL if there is no stretching, thus move image by -1 
-		const bool isRTL = (::GetWindowLongPtr(::GetParent(_hSelf), GWL_EXSTYLE) & WS_EX_LAYOUTRTL) == WS_EX_LAYOUTRTL;
-		const int offset = isRTL && (_closeButtonZone._width == bmp.bmWidth) ? -1 : 0;
-		::SelectObject(hdcMemory, hBmp);
-		::StretchBlt(hDC, buttonRect.left + offset, buttonRect.top, _closeButtonZone._width, _closeButtonZone._height, hdcMemory, offset, 0, bmp.bmWidth, bmp.bmHeight, SRCCOPY);
-		::DeleteDC(hdcMemory);
-		::DeleteObject(hBmp);
+
+		::ImageList_Draw(_hCloseBtnImgLst, idxCloseImg, hDC, buttonRect.left, buttonRect.top, ILD_TRANSPARENT);
 	}
 
 	// draw image
