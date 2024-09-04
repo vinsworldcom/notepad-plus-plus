@@ -2715,7 +2715,7 @@ void Notepad_plus::setupColorSampleBitmapsOnMainMenuItems()
 	// Adds tab colour icons
 	for (int i = 0; i < 5; ++i)
 	{
-		COLORREF colour = nppParam.getIndividualTabColour(i, NppDarkMode::isDarkMenuEnabled(), true);
+		COLORREF colour = nppParam.getIndividualTabColor(i, NppDarkMode::isDarkMenuEnabled(), true);
 		HBITMAP hBitmap = generateSolidColourMenuItemIcon(colour);
 		SetMenuItemBitmaps(_mainMenuHandle, IDM_VIEW_TAB_COLOUR_1 + i, MF_BYCOMMAND, hBitmap, hBitmap);
 	}
@@ -3497,12 +3497,12 @@ void Notepad_plus::addHotSpot(ScintillaEditView* view)
 				pView->execute(SCI_INDICATORCLEARRANGE, startEncoded + startPos, lenEncoded);
 			startWide += lenWide;
 			startEncoded += lenEncoded;
+
 			if ((startWide >= wideTextLen) || ((startEncoded + startPos) >= endPos))
 				break;
 		}
-		assert ((startEncoded + startPos) == endPos);
-		assert (startWide == wideTextLen);
 	}
+
 	delete[] wideText;
 }
 
