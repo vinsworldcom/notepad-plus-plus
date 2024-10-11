@@ -5014,7 +5014,12 @@ void NppParameters::feedGUIParameters(TiXmlNode *node)
 				const wchar_t* val = n->Value();
 				if (val)
 				{
-					_nppGUI._isMinimizedToTray = (lstrcmp(val, L"yes") == 0);
+					if (lstrcmp(val, L"no") == 0 || lstrcmp(val, L"0") == 0)
+						_nppGUI._isMinimizedToTray = sta_none;
+					else if (lstrcmp(val, L"yes") == 0|| lstrcmp(val, L"1") == 0)
+						_nppGUI._isMinimizedToTray = sta_minimize;
+					else if (lstrcmp(val, L"2") == 0)
+						_nppGUI._isMinimizedToTray = sta_close;
 				}
 			}
 		}
@@ -7377,9 +7382,13 @@ void NppParameters::createXmlTreeFromGUIParams()
 		insertGUIConfigBoolNode(newGUIRoot, L"CheckHistoryFiles", _nppGUI._checkHistoryFiles);
 	}
 
-	// <GUIConfig name="TrayIcon">no</GUIConfig>
+	// <GUIConfig name="TrayIcon">0</GUIConfig>
 	{
-		insertGUIConfigBoolNode(newGUIRoot, L"TrayIcon", _nppGUI._isMinimizedToTray);
+		wchar_t szStr[12] { '\0' };
+		_itow(_nppGUI._isMinimizedToTray, szStr, 10);
+		TiXmlElement* GUIConfigElement = (newGUIRoot->InsertEndChild(TiXmlElement(L"GUIConfig")))->ToElement();
+		GUIConfigElement->SetAttribute(L"name", L"TrayIcon");
+		GUIConfigElement->InsertEndChild(TiXmlText(szStr));
 	}
 
 	// <GUIConfig name="MaintainIndent">yes</GUIConfig>
