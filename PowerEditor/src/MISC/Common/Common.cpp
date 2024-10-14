@@ -22,11 +22,10 @@
 #include <locale>
 #include "StaticDialog.h"
 #include "CustomFileDialog.h"
-
 #include "FileInterface.h"
 #include "Common.h"
 #include "Utf8.h"
-#include <Parameters.h>
+#include "Parameters.h"
 #include "Buffer.h"
 
 using namespace std;
@@ -1772,70 +1771,6 @@ bool Version::isCompatibleTo(const Version& from, const Version& to) const
 
 #define DEFAULT_MILLISEC 1000
 
-//----------------------------------------------------
-struct GetAttrParamResult {
-	wstring _filePath;
-	DWORD _fileAttr = INVALID_FILE_ATTRIBUTES;
-	bool _isNetworkFailure = true;
-};
-
-DWORD WINAPI getFileAttributesWorker(void* data)
-{
-	GetAttrParamResult* inAndOut = static_cast<GetAttrParamResult*>(data);
-	inAndOut->_fileAttr = ::GetFileAttributesW(inAndOut->_filePath.c_str());
-	inAndOut->_isNetworkFailure = false;
-	return ERROR_SUCCESS;
-};
-
-DWORD getFileAttrWaitSec(const wchar_t* filePath, DWORD milliSec2wait, bool* isNetWorkProblem)
-{
-	GetAttrParamResult data(filePath);
-
-	HANDLE hThread = ::CreateThread(NULL, 0, getFileAttributesWorker, &data, 0, NULL);
-	if (!hThread)
-	{
-		return INVALID_FILE_ATTRIBUTES;
-	}
-
-	// wait for our worker thread to complete or terminate it when the required timeout has elapsed
-	DWORD dwWaitStatus = ::WaitForSingleObject(hThread, milliSec2wait == 0 ? DEFAULT_MILLISEC : milliSec2wait);
-	switch (dwWaitStatus)
-	{
-		case WAIT_OBJECT_0: // Ok, the state of our worker thread is signaled, so it finished itself in the timeout given		
-			// - nothing else to do here, except the thread handle closing later
-			break;
-
-		case WAIT_TIMEOUT: // the timeout interval elapsed, but the worker's state is still non-signaled
-		default: // any other dwWaitStatus is a BAD one here
-			// WAIT_FAILED or WAIT_ABANDONED
-			::TerminateThread(hThread, dwWaitStatus);
-			break;
-	}
-	CloseHandle(hThread);
-	
-	if (isNetWorkProblem != nullptr)
-		*isNetWorkProblem = data._isNetworkFailure;
-
-	return data._fileAttr;
-};
-
-bool doesFileExist(const wchar_t* filePath, DWORD milliSec2wait, bool* isNetWorkProblem)
-{
-	DWORD attr = getFileAttrWaitSec(filePath, milliSec2wait, isNetWorkProblem);
-	return (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY));
-}
-
-bool doesDirectoryExist(const wchar_t* dirPath, DWORD milliSec2wait, bool* isNetWorkProblem)
-{
-	DWORD attr = getFileAttrWaitSec(dirPath, milliSec2wait, isNetWorkProblem);
-	return (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));
-}
-
-bool doesPathExist(const wchar_t* path, DWORD milliSec2wait, bool* isNetWorkProblem)
-{
-	DWORD attr = getFileAttrWaitSec(path, milliSec2wait, isNetWorkProblem);
-	return (attr != INVALID_FILE_ATTRIBUTES);
-}
 
 //----------------------------------------------------
 
@@ -1844,7 +1779,8 @@ struct GetDiskFreeSpaceParamResult
 	std::wstring _dirPath;
 	ULARGE_INTEGER _freeBytesForUser {};
 	DWORD _result = FALSE;
-	bool _isNetworkFailure = true;
+	bool _isTimeoutReached = true;
+
 	GetDiskFreeSpaceParamResult(wstring dirPath) : _dirPath(dirPath) {};
 };
 
@@ -1852,11 +1788,11 @@ DWORD WINAPI getDiskFreeSpaceExWorker(void* data)
 {
 	GetDiskFreeSpaceParamResult* inAndOut = static_cast<GetDiskFreeSpaceParamResult*>(data);
 	inAndOut->_result = ::GetDiskFreeSpaceExW(inAndOut->_dirPath.c_str(), &(inAndOut->_freeBytesForUser), nullptr, nullptr);
-	inAndOut->_isNetworkFailure = false;
+	inAndOut->_isTimeoutReached = false;
 	return ERROR_SUCCESS;
 };
 
-DWORD getDiskFreeSpaceWaitSec(const wchar_t* dirPath, ULARGE_INTEGER* freeBytesForUser, DWORD milliSec2wait, bool* isNetWorkProblem)
+DWORD getDiskFreeSpaceWithTimeout(const wchar_t* dirPath, ULARGE_INTEGER* freeBytesForUser, DWORD milliSec2wait, bool* isTimeoutReached)
 {
 	GetDiskFreeSpaceParamResult data(dirPath);
 
@@ -1884,8 +1820,8 @@ DWORD getDiskFreeSpaceWaitSec(const wchar_t* dirPath, ULARGE_INTEGER* freeBytesF
 
 	*freeBytesForUser = data._freeBytesForUser;
 
-	if (isNetWorkProblem != nullptr)
-		*isNetWorkProblem = data._isNetworkFailure;
+	if (isTimeoutReached != nullptr)
+		*isTimeoutReached = data._isTimeoutReached;
 
 	return data._result;
 }
@@ -1898,7 +1834,8 @@ struct GetAttrExParamResult
 	wstring _filePath;
 	WIN32_FILE_ATTRIBUTE_DATA _attributes{};
 	DWORD _result = FALSE;
-	bool _isNetworkFailure = true;
+	bool _isTimeoutReached = true;
+
 	GetAttrExParamResult(wstring filePath): _filePath(filePath) {
 		_attributes.dwFileAttributes = INVALID_FILE_ATTRIBUTES;
 	}
@@ -1908,11 +1845,11 @@ DWORD WINAPI getFileAttributesExWorker(void* data)
 {
 	GetAttrExParamResult* inAndOut = static_cast<GetAttrExParamResult*>(data);
 	inAndOut->_result = ::GetFileAttributesEx(inAndOut->_filePath.c_str(), GetFileExInfoStandard, &(inAndOut->_attributes));
-	inAndOut->_isNetworkFailure = false;
+	inAndOut->_isTimeoutReached = false;
 	return ERROR_SUCCESS;
 };
 
-DWORD getFileAttributesExWaitSec(const wchar_t* filePath, WIN32_FILE_ATTRIBUTE_DATA* fileAttr, DWORD milliSec2wait, bool* isNetWorkProblem)
+DWORD getFileAttributesExWithTimeout(const wchar_t* filePath, WIN32_FILE_ATTRIBUTE_DATA* fileAttr, DWORD milliSec2wait, bool* isTimeoutReached)
 {
 	GetAttrExParamResult data(filePath);
 
@@ -1940,65 +1877,29 @@ DWORD getFileAttributesExWaitSec(const wchar_t* filePath, WIN32_FILE_ATTRIBUTE_D
 
 	*fileAttr = data._attributes;
 
-	if (isNetWorkProblem != nullptr)
-		*isNetWorkProblem = data._isNetworkFailure;
+	if (isTimeoutReached != nullptr)
+		*isTimeoutReached = data._isTimeoutReached;
 
 	return data._result;
 }
 
-
-//----------------------------------------------------
-
-struct CreateFileParamResult
+bool doesFileExist(const wchar_t* filePath, DWORD milliSec2wait, bool* isTimeoutReached)
 {
-	wstring _filePath;
-	HANDLE _hFile = INVALID_HANDLE_VALUE;
-	DWORD _accessParam = GENERIC_READ | GENERIC_WRITE;
-	DWORD _shareParam = FILE_SHARE_READ | FILE_SHARE_WRITE;
-	DWORD _dispParam = CREATE_ALWAYS;
-	DWORD _attribParam = FILE_ATTRIBUTE_NORMAL;
-	bool _isNetworkFailure = true;
-	CreateFileParamResult(wstring filePath, DWORD accessParam, DWORD shareParam, DWORD dispParam, DWORD attribParam) :
-		_filePath(filePath), _accessParam(accessParam), _shareParam(shareParam), _dispParam(dispParam), _attribParam(attribParam) {};
-};
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	getFileAttributesExWithTimeout(filePath, &attributes, milliSec2wait, isTimeoutReached);
+	return (attributes.dwFileAttributes != INVALID_FILE_ATTRIBUTES && !(attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY));
+}
 
-DWORD WINAPI createFileWorker(void* data)
+bool doesDirectoryExist(const wchar_t* dirPath, DWORD milliSec2wait, bool* isTimeoutReached)
 {
-	CreateFileParamResult* inAndOut = static_cast<CreateFileParamResult*>(data);
-	inAndOut->_hFile = ::CreateFileW(inAndOut->_filePath.c_str(), inAndOut->_accessParam, inAndOut->_shareParam, NULL, inAndOut->_dispParam, inAndOut->_attribParam, NULL);
-	inAndOut->_isNetworkFailure = false;
-	return ERROR_SUCCESS;
-};
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	getFileAttributesExWithTimeout(dirPath, &attributes, milliSec2wait, isTimeoutReached);
+	return (attributes.dwFileAttributes != INVALID_FILE_ATTRIBUTES && (attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY));
+}
 
-HANDLE createFileWaitSec(const wchar_t* filePath, DWORD accessParam, DWORD shareParam, DWORD dispParam, DWORD attribParam, DWORD milliSec2wait, bool* isNetWorkProblem)
+bool doesPathExist(const wchar_t* path, DWORD milliSec2wait, bool* isTimeoutReached)
 {
-	CreateFileParamResult data(filePath, accessParam, shareParam, dispParam, attribParam);
-
-	HANDLE hThread = ::CreateThread(NULL, 0, createFileWorker, &data, 0, NULL);
-	if (!hThread)
-	{
-		return INVALID_HANDLE_VALUE;
-	}
-
-	// wait for our worker thread to complete or terminate it when the required timeout has elapsed
-	DWORD dwWaitStatus = ::WaitForSingleObject(hThread, milliSec2wait == 0 ? DEFAULT_MILLISEC : milliSec2wait);
-	switch (dwWaitStatus)
-	{
-		case WAIT_OBJECT_0: // Ok, the state of our worker thread is signaled, so it finished itself in the timeout given		
-			// - nothing else to do here, except the thread handle closing later
-			break;
-
-		case WAIT_TIMEOUT: // the timeout interval elapsed, but the worker's state is still non-signaled
-		default: // Timeout reached, or WAIT_FAILED or WAIT_ABANDONED
-			// attempt to cancel the operation
-			::CancelIoEx(data._hFile, NULL);
-			::TerminateThread(hThread, dwWaitStatus);
-			break;
-	}
-	CloseHandle(hThread);
-
-	if (isNetWorkProblem != nullptr)
-		*isNetWorkProblem = data._isNetworkFailure;
-
-	return data._hFile;
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	getFileAttributesExWithTimeout(path, &attributes, milliSec2wait, isTimeoutReached);
+	return (attributes.dwFileAttributes != INVALID_FILE_ATTRIBUTES);
 }

@@ -142,7 +142,7 @@ void Buffer::updateTimeStamp()
 {
 	FILETIME timeStampLive {};
 	WIN32_FILE_ATTRIBUTE_DATA attributes{};
-	if (getFileAttributesExWaitSec(_fullPathName.c_str(), &attributes) != FALSE)
+	if (getFileAttributesExWithTimeout(_fullPathName.c_str(), &attributes) != FALSE)
 	{
 		timeStampLive = attributes.ftLastWriteTime;
 	}
@@ -311,7 +311,7 @@ bool Buffer::checkFileState() // returns true if the status has been changed (it
 			isOK = true;
 		}
 	}
-	else if (getFileAttributesExWaitSec(_fullPathName.c_str(), &attributes) != FALSE)
+	else if (getFileAttributesExWithTimeout(_fullPathName.c_str(), &attributes) != FALSE)
 	{
 		int mask = 0;	//status always 'changes', even if from modified to modified
 		bool isFileReadOnly = attributes.dwFileAttributes & FILE_ATTRIBUTE_READONLY;
@@ -710,7 +710,7 @@ BufferID FileManager::loadFile(const wchar_t* filename, Document doc, int encodi
 	if (pPath)
 	{
 		WIN32_FILE_ATTRIBUTE_DATA attributes{};
-		if (getFileAttributesExWaitSec(pPath, &attributes) != FALSE)
+		if (getFileAttributesExWithTimeout(pPath, &attributes) != FALSE)
 		{
 			LARGE_INTEGER size{};
 			size.LowPart = attributes.nFileSizeLow;
@@ -843,12 +843,22 @@ bool FileManager::reloadBuffer(BufferID id)
 								// Set _isLoadedDirty false before calling "_pscratchTilla->execute(SCI_CLEARALL);" in loadFileData() to avoid setDirty in SCN_SAVEPOINTREACHED / SCN_SAVEPOINTLEFT
 
 	//Get file size
-	FILE* fp = _wfopen(buf->getFullPathName(), L"rb");
-	if (!fp)
+	int64_t fileSize = 0;
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	getFileAttributesExWithTimeout(buf->getFullPathName(), &attributes);
+	if (attributes.dwFileAttributes == INVALID_FILE_ATTRIBUTES)
+	{
 		return false;
-	_fseeki64(fp, 0, SEEK_END);
-	int64_t fileSize = _ftelli64(fp);
-	fclose(fp);
+	}
+	else
+	{
+		LARGE_INTEGER size{};
+		size.LowPart = attributes.nFileSizeLow;
+		size.HighPart = attributes.nFileSizeHigh;
+
+		fileSize = size.QuadPart;
+	}
+
 	
 	char* data = new char[blockSize + 8]; // +8 for incomplete multibyte char
 
@@ -1183,7 +1193,7 @@ SavingStatus FileManager::saveBuffer(BufferID id, const wchar_t* filename, bool 
 	const wchar_t* currentBufFilePath = buffer->getFullPathName();
 	ULARGE_INTEGER freeBytesForUser;
 	 
-	BOOL getFreeSpaceSuccessful = getDiskFreeSpaceWaitSec(dirDest, &freeBytesForUser);
+	BOOL getFreeSpaceSuccessful = getDiskFreeSpaceWithTimeout(dirDest, &freeBytesForUser);
 	if (getFreeSpaceSuccessful)
 	{
 		int64_t fileSize = buffer->getFileLength();
@@ -1198,12 +1208,13 @@ SavingStatus FileManager::saveBuffer(BufferID id, const wchar_t* filename, bool 
 			return SavingStatus::NotEnoughRoom;
 	}
 
-	DWORD attrib = getFileAttrWaitSec(fullpath);
-	if (attrib != INVALID_FILE_ATTRIBUTES)
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	getFileAttributesExWithTimeout(fullpath, &attributes);
+	if (attributes.dwFileAttributes != INVALID_FILE_ATTRIBUTES && !(attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
 	{
-		isHiddenOrSys = (attrib & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)) != 0;
+		isHiddenOrSys = (attributes.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)) != 0;
 		if (isHiddenOrSys)
-			::SetFileAttributes(filename, attrib & ~(FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM));
+			::SetFileAttributes(filename, attributes.dwFileAttributes & ~(FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM));
 	}
 
 	UniMode mode = buffer->getUnicodeMode();
@@ -1264,7 +1275,7 @@ SavingStatus FileManager::saveBuffer(BufferID id, const wchar_t* filename, bool 
 		}
 
 		if (isHiddenOrSys)
-			::SetFileAttributes(fullpath, attrib);
+			::SetFileAttributes(fullpath, attributes.dwFileAttributes);
 
 		if (isCopy) // "Save a Copy As..." command
 		{
@@ -1561,10 +1572,7 @@ LangType FileManager::detectLanguageFromTextBegining(const unsigned char *data, 
 
 bool FileManager::loadFileData(Document doc, int64_t fileSize, const wchar_t * filename, char* data, Utf8_16_Read * unicodeConvertor, LoadedFileFormat& fileFormat)
 {
-	FILE *fp = _wfopen(filename, L"rb");
-	if (!fp)
-		return false;
-
+	// Check file size firstly
 	// size/6 is the normal room Scintilla keeps for editing, but here we limit it to 1MiB when loading (maybe we want to load big files without editing them too much)
 	int64_t bufferSizeRequested = fileSize + std::min<int64_t>(1LL << 20, fileSize / 6);
 	
@@ -1582,7 +1590,6 @@ bool FileManager::loadFileData(Document doc, int64_t fileSize, const wchar_t * f
 				L"File size problem",
 				MB_OK | MB_APPLMODAL);
 
-			fclose(fp);
 			return false;
 		}
 		else // x64
@@ -1602,12 +1609,16 @@ bool FileManager::loadFileData(Document doc, int64_t fileSize, const wchar_t * f
 				}
 				else
 				{
-					fclose(fp);
 					return false;
 				}
 			}
 		}
 	}
+
+	FILE* fp = _wfopen(filename, L"rb");
+
+	if (!fp)
+		return false;
 
 	//Setup scratchtilla for new filedata
 	_pscratchTilla->execute(SCI_SETSTATUS, SC_STATUS_OK); // reset error status
@@ -1641,7 +1652,7 @@ bool FileManager::loadFileData(Document doc, int64_t fileSize, const wchar_t * f
 	bool success = true;
 	EolType format = EolType::unknown;
 	int sciStatus = SC_STATUS_OK;
-	wchar_t szException[64] = { '\0' };
+	wchar_t szException[64] = {'\0'};
 	__try
 	{
 		// First allocate enough memory for the whole file (this will reduce memory copy during loading)
@@ -1730,7 +1741,7 @@ bool FileManager::loadFileData(Document doc, int64_t fileSize, const wchar_t * f
 		}
 		while (lenFile > 0);
 	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
+	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		switch (sciStatus)
 		{
