@@ -2257,7 +2257,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			if (wParam != WA_INACTIVE && _pEditView && _pNonEditView)
 			{
-				_pEditView->getFocus();
+				_pEditView->grabFocus();
 				auto x = _pEditView->execute(SCI_GETXOFFSET);
 				_pEditView->execute(SCI_SETXOFFSET, x);
 				x = _pNonEditView->execute(SCI_GETXOFFSET);
@@ -2835,9 +2835,10 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case WM_SYSCOMMAND:
 		{
-			const NppGUI & nppgui = (nppParam.getNppGUI());
-			if (((nppgui._isMinimizedToTray == sta_minimize || _pPublicInterface->isPrelaunch()) && (wParam == SC_MINIMIZE)) ||
-				(nppgui._isMinimizedToTray == sta_close && wParam == SC_CLOSE)
+			const NppGUI & nppgui = nppParam.getNppGUI();
+			auto toTray = nppgui._isMinimizedToTray;
+			if (((toTray == sta_minimize || toTray == sta_minimize_close || _pPublicInterface->isPrelaunch()) && (wParam == SC_MINIMIZE)) ||
+				((toTray == sta_close || toTray == sta_minimize_close) && wParam == SC_CLOSE)
 			)
 			{
 				if (nullptr == _pTrayIco)
@@ -2879,7 +2880,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				//case WM_LBUTTONDBLCLK:
 				case WM_LBUTTONUP :
 				{
-					_pEditView->getFocus();
+					_pEditView->grabFocus();
 					::ShowWindow(hwnd, SW_SHOW);
 					_dockingManager.showFloatingContainers(true);
 					restoreMinimizeDialogs();

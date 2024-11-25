@@ -268,8 +268,12 @@ LRESULT Notepad_plus::init(HWND hwnd)
 	_mainDocTab.dpiManager().setDpiWithParent(hwnd);
 	_subDocTab.dpiManager().setDpiWithParent(hwnd);
 
-	_mainDocTab.init(_pPublicInterface->getHinst(), hwnd, &_mainEditView, indexDocTabIcon);
-	_subDocTab.init(_pPublicInterface->getHinst(), hwnd, &_subEditView, indexDocTabIcon);
+	unsigned char buttonsStatus = 0;
+	buttonsStatus |= (tabBarStatus & TAB_CLOSEBUTTON) ? 1 : 0;
+	buttonsStatus |= (tabBarStatus & TAB_PINBUTTON) ? 2 : 0;
+
+	_mainDocTab.init(_pPublicInterface->getHinst(), hwnd, &_mainEditView, indexDocTabIcon, buttonsStatus);
+	_subDocTab.init(_pPublicInterface->getHinst(), hwnd, &_subEditView, indexDocTabIcon, buttonsStatus);
 
 	_mainEditView.display();
 
@@ -449,7 +453,7 @@ LRESULT Notepad_plus::init(HWND hwnd)
 
 	_dockingManager.init(_pPublicInterface->getHinst(), hwnd, &_pMainWindow);
 
-	if ((nppGUI._isMinimizedToTray == sta_minimize || nppGUI._isMinimizedToTray == sta_close) && _pTrayIco == nullptr)
+	if (nppGUI._isMinimizedToTray != sta_none && _pTrayIco == nullptr)
 	{
 		HICON icon = nullptr;
 		Notepad_plus_Window::loadTrayIcon(_pPublicInterface->getHinst(), &icon);
@@ -876,7 +880,7 @@ LRESULT Notepad_plus::init(HWND hwnd)
 	activateBuffer(_mainEditView.getCurrentBufferID(), MAIN_VIEW);
 	activateBuffer(_subEditView.getCurrentBufferID(), SUB_VIEW);
 
-	_mainEditView.getFocus();
+	_mainEditView.grabFocus();
 
 	return TRUE;
 }
@@ -2051,7 +2055,7 @@ bool Notepad_plus::findInFinderFiles(FindersInfo *findInFolderInfo)
 	_pEditView = &_invisibleEditView;
 	Document oldDoc = _invisibleEditView.execute(SCI_GETDOCPOINTER);
 
-	vector<wstring> fileNames = findInFolderInfo->_pSourceFinder->getResultFilePaths();
+	vector<wstring> fileNames = findInFolderInfo->_pSourceFinder->getResultFilePaths(false);
 
 	findInFolderInfo->_pDestFinder->beginNewFilesSearch();
 	findInFolderInfo->_pDestFinder->addSearchLine(findInFolderInfo->_findOption._str2Search.c_str());
@@ -2562,7 +2566,20 @@ void Notepad_plus::checkClipboard()
 	if (!NppParameters::getInstance().getSVP()._lineCopyCutWithoutSelection)
 	{
 		enableCommand(IDM_EDIT_CUT, hasSelection, MENU | TOOLBAR);
-		enableCommand(IDM_EDIT_COPY, hasSelection, MENU | TOOLBAR);
+
+		if (hasSelection)
+		{
+			enableCommand(IDM_EDIT_COPY, true, MENU | TOOLBAR);
+		}
+		else if (_findReplaceDlg.allowCopyAction())
+		{
+			enableCommand(IDM_EDIT_COPY, false, TOOLBAR);
+			enableCommand(IDM_EDIT_COPY, true, MENU);
+		}
+		else
+		{
+			enableCommand(IDM_EDIT_COPY, false, MENU | TOOLBAR);
+		}
 	}
 	enableCommand(IDM_EDIT_PASTE, canPaste, MENU | TOOLBAR);
 	enableCommand(IDM_EDIT_DELETE, hasSelection, MENU | TOOLBAR);
@@ -4748,7 +4765,7 @@ int Notepad_plus::switchEditViewTo(int gid)
 	if (currentView() == gid)
 	{
 		//make sure focus is ok, then leave
-		_pEditView->getFocus();	//set the focus
+		_pEditView->grabFocus();	//set the focus
 		return gid;
 	}
 
@@ -4764,7 +4781,7 @@ int Notepad_plus::switchEditViewTo(int gid)
 	std::swap(_pEditView, _pNonEditView);
 
 	_pEditView->beSwitched();
-    _pEditView->getFocus();	//set the focus
+    _pEditView->grabFocus();	//set the focus
 
 	if (_pDocMap)
 	{
@@ -5935,7 +5952,7 @@ void Notepad_plus::fullScreenToggle()
         int y = nppRect.top;
         ::MoveWindow(_restoreButton.getHSelf(), x, y, w, h, FALSE);
 
-        _pEditView->getFocus();
+        _pEditView->grabFocus();
 	}
 	else	//toggle fullscreen off
 	{
@@ -6069,7 +6086,7 @@ void Notepad_plus::postItToggle()
         int y = nppRect.top + 1;
         ::MoveWindow(_restoreButton.getHSelf(), x, y, w, h, FALSE);
 
-        _pEditView->getFocus();
+        _pEditView->grabFocus();
 	}
 	else	//PostIt enabled, disable it
 	{
@@ -7693,7 +7710,7 @@ void Notepad_plus::launchDocMap()
 	_pDocMap->wrapMap();
 	_pDocMap->display();
 
-	_pEditView->getFocus();
+	_pEditView->grabFocus();
 }
 
 

@@ -1270,7 +1270,7 @@ bool NppParameters::load()
 	if (doesFileExist(langs_xml_path.c_str()))
 	{
 		WIN32_FILE_ATTRIBUTE_DATA attributes{};
-
+		attributes.dwFileAttributes = INVALID_FILE_ATTRIBUTES;
 		if (GetFileAttributesEx(langs_xml_path.c_str(), GetFileExInfoStandard, &attributes) != 0)
 		{
 			if (attributes.nFileSizeLow == 0 && attributes.nFileSizeHigh == 0)
@@ -4924,6 +4924,10 @@ void NppParameters::feedGUIParameters(TiXmlNode *node)
 				else
 					isFailed = true;
 			}
+			else
+			{
+				_nppGUI._tabStatus |= TAB_PINBUTTON;
+			}
 
 			val = element->Attribute(L"doubleClick2Close");
 			if (val)
@@ -5037,6 +5041,8 @@ void NppParameters::feedGUIParameters(TiXmlNode *node)
 						_nppGUI._isMinimizedToTray = sta_minimize;
 					else if (lstrcmp(val, L"2") == 0)
 						_nppGUI._isMinimizedToTray = sta_close;
+					else if (lstrcmp(val, L"3") == 0)
+						_nppGUI._isMinimizedToTray = sta_minimize_close;
 				}
 			}
 		}

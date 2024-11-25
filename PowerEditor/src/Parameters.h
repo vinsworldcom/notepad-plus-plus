@@ -122,7 +122,7 @@ enum urlMode {urlDisable = 0, urlNoUnderLineFg, urlUnderLineFg, urlNoUnderLineBg
               urlMax = urlUnderLineBg};
 
 enum AutoIndentMode { autoIndent_none = 0, autoIndent_advanced = 1, autoIndent_basic = 2 };
-enum SysTrayAction { sta_none = 0, sta_minimize = 1, sta_close = 2 };
+enum SysTrayAction { sta_none = 0, sta_minimize = 1, sta_close = 2, sta_minimize_close = 3 };
 
 const int LANG_INDEX_INSTR = 0;
 const int LANG_INDEX_INSTR2 = 1;
@@ -1396,12 +1396,12 @@ struct HLSColour
 	void loadFromRGB(COLORREF rgb) { ColorRGBToHLS(rgb, &_hue, &_lightness, &_saturation); }
 	COLORREF toRGB() const { return ColorHLSToRGB(_hue, _lightness, _saturation); }
 
-	COLORREF toRGB4DarkModWithTuning(int lightnessMore, int saturationLess) const { 
+	COLORREF toRGB4DarkModeWithTuning(int lightnessMore, int saturationLess) const { 
 		return ColorHLSToRGB(_hue, 
 			static_cast<WORD>(static_cast<int>(_lightness) + lightnessMore), 
 			static_cast<WORD>(static_cast<int>(_saturation) - saturationLess));
 	}
-	COLORREF toRGB4DarkMod() const { return toRGB4DarkModWithTuning(50, 20); }
+	COLORREF toRGB4DarkMod() const { return toRGB4DarkModeWithTuning(50, 20); }
 };
 
 struct UdlXmlFileState final {
