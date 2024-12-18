@@ -2430,7 +2430,20 @@ bool NppParameters::getSessionFromXmlTree(TiXmlDocument *pSessionDoc, Session& s
 					langName = (childNode->ToElement())->Attribute(L"lang");
 					int encoding = -1;
 					const wchar_t *encStr = (childNode->ToElement())->Attribute(L"encoding", &encoding);
-					const wchar_t *backupFilePath = (childNode->ToElement())->Attribute(L"backupFilePath");
+
+					const wchar_t *pBackupFilePath = (childNode->ToElement())->Attribute(L"backupFilePath");
+					std::wstring currentBackupFilePath = NppParameters::getInstance().getUserPath() + L"\\backup\\"; 
+					if (pBackupFilePath)
+					{
+						std::wstring backupFilePath = pBackupFilePath;
+						if (!backupFilePath.starts_with(currentBackupFilePath))
+						{
+							// reconstruct backupFilePath
+							wchar_t* fn = PathFindFileName(pBackupFilePath);
+							currentBackupFilePath += fn;
+							pBackupFilePath = currentBackupFilePath.c_str();
+						}
+					}
 
 					FILETIME fileModifiedTimestamp{};
 					(childNode->ToElement())->Attribute(L"originalFileLastModifTimestamp", reinterpret_cast<int32_t*>(&fileModifiedTimestamp.dwLowDateTime));
@@ -2446,7 +2459,7 @@ bool NppParameters::getSessionFromXmlTree(TiXmlDocument *pSessionDoc, Session& s
 					if (boolStrPinned)
 						isPinned = _wcsicmp(L"yes", boolStrPinned) == 0;
 
-					sessionFileInfo sfi(fileName, langName, encStr ? encoding : -1, isUserReadOnly, isPinned, position, backupFilePath, fileModifiedTimestamp, mapPosition);
+					sessionFileInfo sfi(fileName, langName, encStr ? encoding : -1, isUserReadOnly, isPinned, position, pBackupFilePath, fileModifiedTimestamp, mapPosition);
 
 					const wchar_t* intStrTabColour = (childNode->ToElement())->Attribute(L"tabColourId");
 					if (intStrTabColour)
@@ -2781,10 +2794,6 @@ void NppParameters::feedFindHistoryParameters(TiXmlNode *node)
 	boolStr = (findHistoryRoot->ToElement())->Attribute(L"fifFilterFollowsDoc");
 	if (boolStr)
 		_findHistory._isFilterFollowDoc = (lstrcmp(L"yes", boolStr) == 0);
-
-	boolStr = (findHistoryRoot->ToElement())->Attribute(L"fifFolderFollowsDoc");
-	if (boolStr)
-		_findHistory._isFolderFollowDoc = (lstrcmp(L"yes", boolStr) == 0);
 
 	int mode = 0;
 	boolStr = (findHistoryRoot->ToElement())->Attribute(L"searchMode", &mode);
@@ -3224,32 +3233,25 @@ bool NppParameters::exportUDLToFile(size_t langIndex2export, const std::wstring&
 
 LangType NppParameters::getLangFromExt(const wchar_t *ext)
 {
-	int i = getNbLang();
-	i--;
+	// first check a user defined extensions for styles
+	LexerStylerArray &lexStyleList = getLStylerArray();
+	for (size_t i = 0 ; i < lexStyleList.getNbLexer(); ++i)
+	{
+		LexerStyler &styler = lexStyleList.getLexerFromIndex(i);
+		const wchar_t *extList = styler.getLexerUserExt();
+
+		if (isInList(ext, extList))
+			return getLangIDFromStr(styler.getLexerName());
+	}
+
+	// then check languages extensions
+	int i = getNbLang() - 1;
 	while (i >= 0)
 	{
 		Lang *l = getLangFromIndex(i--);
-
 		const wchar_t *defList = l->getDefaultExtList();
-		const wchar_t *userList = NULL;
 
-		LexerStylerArray &lsa = getLStylerArray();
-		const wchar_t *lName = l->getLangName();
-		LexerStyler *pLS = lsa.getLexerStylerByName(lName);
-
-		if (pLS)
-			userList = pLS->getLexerUserExt();
-
-		std::wstring list;
-		if (defList)
-			list += defList;
-
-		if (userList)
-		{
-			list += L" ";
-			list += userList;
-		}
-		if (isInList(ext, list.c_str()))
+		if (defList && isInList(ext, defList))
 			return l->getLangID();
 	}
 	return L_TEXT;
@@ -4701,7 +4703,7 @@ std::wstring NppParameters::getLocPathFromStr(const std::wstring & localizationC
 		return L"aranese.xml";
 	if (localizationCode == L"exy")
 		return L"extremaduran.xml";
-	if (localizationCode == L"keb")
+	if (localizationCode == L"kab")
 		return L"kabyle.xml";
 	if (localizationCode == L"lij")
 		return L"ligurian.xml";
@@ -6166,6 +6168,12 @@ void NppParameters::feedGUIParameters(TiXmlNode *node)
 			else
 			{
 				_nppGUI._inSelectionAutocheckThreshold = FINDREPLACE_INSELECTION_THRESHOLD_DEFAULT;
+			}
+
+			const wchar_t* optFillDirFieldFromActiveDoc = element->Attribute(L"fillDirFieldFromActiveDoc");
+			if (optFillDirFieldFromActiveDoc)
+			{
+				_nppGUI._fillDirFieldFromActiveDoc = (lstrcmp(optFillDirFieldFromActiveDoc, L"yes") == 0);
 			}
 		}
 		else if (!lstrcmp(nm, L"MISC"))
@@ -7732,6 +7740,7 @@ void NppParameters::createXmlTreeFromGUIParams()
 		GUIConfigElement->SetAttribute(L"confirmReplaceInAllOpenDocs", _nppGUI._confirmReplaceInAllOpenDocs ? L"yes" : L"no");
 		GUIConfigElement->SetAttribute(L"replaceStopsWithoutFindingNext", _nppGUI._replaceStopsWithoutFindingNext ? L"yes" : L"no");
 		GUIConfigElement->SetAttribute(L"inSelectionAutocheckThreshold", _nppGUI._inSelectionAutocheckThreshold);
+		GUIConfigElement->SetAttribute(L"fillDirFieldFromActiveDoc", _nppGUI._fillDirFieldFromActiveDoc ? L"yes" : L"no");
 	}
 
 	// <GUIConfig name="searchEngine" searchEngineChoice="2" searchEngineCustom="" />
@@ -7859,7 +7868,6 @@ bool NppParameters::writeFindHistory()
 	(findHistoryRoot->ToElement())->SetAttribute(L"fifProjectPanel2",	      	_findHistory._isFifProjectPanel_2 ? L"yes" : L"no");
 	(findHistoryRoot->ToElement())->SetAttribute(L"fifProjectPanel3",	       	_findHistory._isFifProjectPanel_3 ? L"yes" : L"no");
 	(findHistoryRoot->ToElement())->SetAttribute(L"fifFilterFollowsDoc",	_findHistory._isFilterFollowDoc ? L"yes" : L"no");
-	(findHistoryRoot->ToElement())->SetAttribute(L"fifFolderFollowsDoc",	_findHistory._isFolderFollowDoc ? L"yes" : L"no");
 
 	(findHistoryRoot->ToElement())->SetAttribute(L"searchMode", _findHistory._searchMode);
 	(findHistoryRoot->ToElement())->SetAttribute(L"transparencyMode", _findHistory._transparencyMode);

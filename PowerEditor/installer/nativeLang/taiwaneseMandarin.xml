@@ -461,7 +461,6 @@
 				<Item id="1626" name="延伸（\n, \r, \t, \0, \x...）"/>
 				<Item id="1660" name="在多個檔案中取代"/>
 				<Item id="1665" name="在專案中多個檔案中取代"/>
-				<Item id="1661" name="使用目前文件資料夾位置"/>
 				<Item id="1662" name="專案管理員 1"/>
 				<Item id="1663" name="專案管理員 2"/>
 				<Item id="1664" name="專案管理員 3"/>
@@ -919,7 +918,7 @@
 					<Item id="6109" name="非使用中的頁籤變暗"/>
 					<Item id="6110" name="使用中的頁籤加色條"/>
 					<Item id="6111" name="顯示狀態列"/>
-					<Item id="6112" name="在每個頁籤顯示關閉按鈕"/>
+					<Item id="6112" name="顯示關閉按鈕"/>
 					<Item id="6113" name="雙擊滑鼠關閉文件"/>
 					<Item id="6115" name="啟用固定標籤頁功能"/>
 					<Item id="6118" name="隱藏"/>
