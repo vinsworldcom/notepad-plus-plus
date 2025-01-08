@@ -2176,22 +2176,10 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_CHECKDOCSTATUS:
 		{
-			// This is an workaround to deal with Microsoft issue in ReadDirectoryChanges notification
-			// If command prompt is used to write file continuously (e.g. ping -t 8.8.8.8 > ping.log)
-			// Then ReadDirectoryChanges does not detect the change.
-			// Fortunately, notification is sent if right click or double click happens on that file
-			// Let's leverage this as workaround to enhance npp file monitoring functionality.
-			// So calling "doesFileExist" is a workaround here.
-
-			Buffer* currBuf = getCurrentBuffer();
-			if (currBuf && currBuf->isMonitoringOn())
-				doesFileExist(currBuf->getFullPathName());
-
 			const NppGUI & nppgui = nppParam.getNppGUI();
 			if (nppgui._fileAutoDetection != cdDisabled)
 			{
 				bool bCheckOnlyCurrentBuffer = (nppgui._fileAutoDetection & cdEnabledNew) ? true : false;
-
 				checkModifiedDocument(bCheckOnlyCurrentBuffer);
 				return TRUE;
 			}
@@ -2288,11 +2276,19 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			//reset styler for change in Stylers.xml
 			_mainEditView.defineDocType(_mainEditView.getCurrentBuffer()->getLangType());
 			_mainEditView.performGlobalStyles();
-			addHotSpot(& _mainEditView);
 
 			_subEditView.defineDocType(_subEditView.getCurrentBuffer()->getLangType());
 			_subEditView.performGlobalStyles();
-			addHotSpot(& _subEditView);
+
+			int urlAction = nppParam.getNppGUI()._styleURL;
+			if (urlAction != urlDisable)
+			{
+				if (_mainEditView.getCurrentBuffer()->allowClickableLink())
+					addHotSpot(&_mainEditView);
+
+				if (_subEditView.getCurrentBuffer()->allowClickableLink())
+					addHotSpot(&_subEditView);
+			}
 
 			_findReplaceDlg.updateFinderScintilla();
 			
@@ -3703,15 +3699,30 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_UPDATECLICKABLELINKS:
 		{
-			ScintillaEditView* pView = reinterpret_cast<ScintillaEditView*>(wParam);
-			if (pView == NULL)
+			if (wParam == 1)
 			{
-				addHotSpot(_pEditView);
-				addHotSpot(_pNonEditView);
+				removeAllHotSpot();
+				return TRUE;
 			}
-			else
+
+			ScintillaEditView* pView = reinterpret_cast<ScintillaEditView*>(wParam);
+
+			int urlAction = nppParam.getNppGUI()._styleURL;
+			if (urlAction != urlDisable)
 			{
-				addHotSpot(pView);
+				if (pView == NULL)
+				{
+					if (_pEditView->getCurrentBuffer()->allowClickableLink())
+						addHotSpot(_pEditView);
+
+					if (_pNonEditView->getCurrentBuffer()->allowClickableLink())
+						addHotSpot(_pNonEditView);
+				}
+				else
+				{
+					if (pView->getCurrentBuffer()->allowClickableLink())
+						addHotSpot(pView);
+				}
 			}
 			return TRUE;
 		}
@@ -3746,8 +3757,16 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_DOCMODIFIEDBYREPLACEALL:
 		{
-			if (wParam == reinterpret_cast<WPARAM>(_pEditView->getCurrentBuffer()))
-				addHotSpot(_pEditView);
+			Buffer* currentBuf = _pEditView->getCurrentBuffer();
+			if (wParam == reinterpret_cast<WPARAM>(currentBuf))
+			{
+				int urlAction = nppParam.getNppGUI()._styleURL;
+				if (urlAction != urlDisable && currentBuf->allowClickableLink())
+				{
+					addHotSpot(_pEditView);
+				}
+			}
+
 			SCNotification scnN{};
 			scnN.nmhdr.code = NPPN_GLOBALMODIFIED;
 			scnN.nmhdr.hwndFrom = reinterpret_cast<void*>(wParam);

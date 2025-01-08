@@ -113,6 +113,7 @@ public:
 	};
 	int getFileNameFromBuffer(BufferID id, wchar_t * fn2copy);
 	size_t docLength(Buffer * buffer) const;
+	void removeHotSpot(Buffer * buffer) const;
 	size_t nextUntitledNewNumber() const;
 
 private:
@@ -215,6 +216,10 @@ public:
 	LangType getLangType() const { return _lang; }
 
 	void setLangType(LangType lang, const wchar_t * userLangName = L"");
+
+	int getLastLangType() const { return _lastLangType; }
+
+	void setLastLangType(int val) { _lastLangType = val; }
 
 	UniMode getUnicodeMode() const { return _unicodeMode; }
 
@@ -388,6 +393,7 @@ private:
 	//document properties
 	Document _doc;	//invariable
 	LangType _lang = L_TEXT;
+	int _lastLangType = -1;
 	std::wstring _userLangExt; // it's useful if only (_lang == L_USER)
 	bool _isDirty = false;
 	EolType _eolFormat = EolType::osdefault;

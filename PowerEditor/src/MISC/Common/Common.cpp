@@ -859,17 +859,20 @@ bool str2Clipboard(const wstring &str2cpy, HWND hwnd)
 	{
 		return false;
 	}
+
 	if (!::OpenClipboard(hwnd))
 	{
 		::GlobalFree(hglbCopy);
 		return false;
 	}
+
 	if (!::EmptyClipboard())
 	{
 		::GlobalFree(hglbCopy);
 		::CloseClipboard();
 		return false;
 	}
+
 	// Lock the handle and copy the text to the buffer.
 	wchar_t *pStr = (wchar_t *)::GlobalLock(hglbCopy);
 	if (!pStr)
@@ -878,6 +881,7 @@ bool str2Clipboard(const wstring &str2cpy, HWND hwnd)
 		::CloseClipboard();
 		return false;
 	}
+
 	wcscpy_s(pStr, len2Allocate / sizeof(wchar_t), str2cpy.c_str());
 	::GlobalUnlock(hglbCopy);
 	// Place the handle on the clipboard.
@@ -888,6 +892,7 @@ bool str2Clipboard(const wstring &str2cpy, HWND hwnd)
 		::CloseClipboard();
 		return false;
 	}
+
 	if (!::CloseClipboard())
 	{
 		return false;
@@ -907,9 +912,11 @@ bool buf2Clipboard(const std::vector<Buffer*>& buffers, bool isFullPath, HWND hw
 			if (fileName)
 				selection += fileName;
 		}
+
 		if (!selection.empty() && !selection.ends_with(crlf))
 			selection += crlf;
 	}
+
 	if (!selection.empty())
 		return str2Clipboard(selection, hwnd);
 	return false;
@@ -1751,7 +1758,7 @@ bool Version::isCompatibleTo(const Version& from, const Version& to) const
 }
 
 
-#define DEFAULT_MILLISEC 1000
+#define DEFAULT_MILLISEC 3000
 
 
 //----------------------------------------------------
@@ -1816,6 +1823,7 @@ struct GetAttrExParamResult
 	wstring _filePath;
 	WIN32_FILE_ATTRIBUTE_DATA _attributes{};
 	BOOL _result = FALSE;
+	DWORD _error = NO_ERROR;
 	bool _isTimeoutReached = true;
 
 	GetAttrExParamResult(wstring filePath): _filePath(filePath) {
@@ -1826,12 +1834,16 @@ struct GetAttrExParamResult
 DWORD WINAPI getFileAttributesExWorker(void* data)
 {
 	GetAttrExParamResult* inAndOut = static_cast<GetAttrExParamResult*>(data);
+	::SetLastError(NO_ERROR);
 	inAndOut->_result = ::GetFileAttributesExW(inAndOut->_filePath.c_str(), GetFileExInfoStandard, &(inAndOut->_attributes));
+	if (!(inAndOut->_result))
+		inAndOut->_error = ::GetLastError();
 	inAndOut->_isTimeoutReached = false;
 	return ERROR_SUCCESS;
 };
 
-BOOL getFileAttributesExWithTimeout(const wchar_t* filePath, WIN32_FILE_ATTRIBUTE_DATA* fileAttr, DWORD milliSec2wait, bool* isTimeoutReached)
+BOOL getFileAttributesExWithTimeout(const wchar_t* filePath, WIN32_FILE_ATTRIBUTE_DATA* fileAttr,
+	DWORD milliSec2wait, bool* isTimeoutReached, DWORD* pdwWin32ApiError)
 {
 	GetAttrExParamResult data(filePath);
 
@@ -1855,12 +1867,15 @@ BOOL getFileAttributesExWithTimeout(const wchar_t* filePath, WIN32_FILE_ATTRIBUT
 			::TerminateThread(hThread, dwWaitStatus);
 			break;
 	}
-	CloseHandle(hThread);
+	::CloseHandle(hThread);
 
 	*fileAttr = data._attributes;
 
 	if (isTimeoutReached != nullptr)
 		*isTimeoutReached = data._isTimeoutReached;
+
+	if (pdwWin32ApiError != nullptr)
+		*pdwWin32ApiError = data._error;
 
 	return data._result;
 }

@@ -691,7 +691,6 @@ void Finder::deleteResult()
 
 vector<wstring> Finder::getResultFilePaths(bool onlyInSelectedText) const
 {
-	std::vector<wstring> paths;
 	size_t fromLine = 0, toLine = 0;
 
 	if (onlyInSelectedText)
@@ -705,35 +704,39 @@ vector<wstring> Finder::getResultFilePaths(bool onlyInSelectedText) const
 		toLine = _scintView.execute(SCI_GETLINECOUNT) - 1;
 	}
 
-	size_t len = _pMainFoundInfos->size();  // First, get the number of elements in the container
+	size_t len = _pMainFoundInfos->size();
+	vector<wstring> paths;
+
 	for (size_t line = fromLine; line <= toLine; ++line)
 	{
-		bool found = false;  // Was it found?
 		const int lineFoldLevel = _scintView.execute(SCI_GETFOLDLEVEL, line) & SC_FOLDLEVELNUMBERMASK;
 		if (lineFoldLevel == fileHeaderLevel)
 		{
-			line++;  // Move to the next line
-			if (line < len)
-				found = true;  // Found it
-		}
-		else if (lineFoldLevel == resultLevel)
-		{
-			if (line < len)
-				found = true;  // Found it
+			// fileHeaderLevel lines don't have path info; have to look into the NEXT line for it,
+			// but only need to do something special here if we are on the LAST line of the selection
+			if (line == toLine)
+			{
+				++line;
+			}
 		}
 
-		if (found)
+		if (line < len)
 		{
-			wstring& path = (*_pMainFoundInfos)[line]._fullPath;
-			if (std::find(paths.begin(), paths.end(), path) == paths.end())
+			wstring& path2add = (*_pMainFoundInfos)[line]._fullPath;
+			if (!path2add.empty())
 			{
-				paths.push_back(path);
+				// make sure that path is not already in
+				if (std::find(paths.begin(), paths.end(), path2add) == paths.end())
+				{
+					paths.push_back(path2add);
+				}
 			}
 		}
 	}
 
 	return paths;
 }
+
 
 bool Finder::canFind(const wchar_t *fileName, size_t lineNumber, size_t* indexToStartFrom) const
 {
@@ -1689,6 +1692,8 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 
 		case WM_ACTIVATE :
 		{
+			bool isInSelectionAutoChange = false;
+
 			if (LOWORD(wParam) == WA_ACTIVE || LOWORD(wParam) == WA_CLICKACTIVE)
 			{
 				Sci_CharacterRangeFull cr = (*_ppEditView)->getSelection();
@@ -1706,6 +1711,7 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 				enableFindDlgItem(IDC_IN_SELECTION_CHECK, inSelEnabled);
 
 				bool inSelChecked = isCheckedOrNot(IDC_IN_SELECTION_CHECK);
+				bool origInSelChecked = inSelChecked;
 
 				const NppGUI& nppGui = (NppParameters::getInstance()).getNppGUI();
 				if (nppGui._inSelectionAutocheckThreshold != 0)
@@ -1715,6 +1721,29 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 					inSelChecked = inSelEnabled && (nbSelected >= nppGui._inSelectionAutocheckThreshold);
 
 					setChecked(IDC_IN_SELECTION_CHECK, inSelChecked);
+				}
+
+				/*
+				In the scenario where the user clicks the action button (Count, 
+				Find All in Current Document, Replace All, Mark All, or Clear All marks) 
+				without activating the Find/Replace dialog, the "In Selection" checkbox could 
+				be auto-changed after the button click. To prevent the search from running with 
+				this unintended state, the search message has been removed from the queue. 
+				Then, launch a message box to alert the user that the search didn't run and 
+				they need to verify the settings.
+				*/
+				if (inSelChecked != origInSelChecked)
+				{
+					const std::vector<int> inSelActionIds = { IDCCOUNTALL, IDC_FINDALL_CURRENTFILE, IDREPLACEALL, IDCMARKALL, IDC_CLEAR_ALL };
+					for (const auto& id : inSelActionIds)
+					{
+						MSG msg;
+						if (PeekMessage(&msg, ::GetDlgItem(_hSelf, id), 0, 0, PM_REMOVE))
+						{
+							isInSelectionAutoChange = true;
+							break;
+						}
+					}
 				}
 
 				_options._isInSelection = inSelEnabled && inSelChecked;
@@ -1743,7 +1772,21 @@ intptr_t CALLBACK FindReplaceDlg::run_dlgProc(UINT message, WPARAM wParam, LPARA
 			{
 				enableFindDlgItem(IDREDOTMATCHNL, false);
 			}
+
 			enableProjectCheckmarks();
+
+			if (isInSelectionAutoChange)
+			{
+				NppParameters& nppParamInst = NppParameters::getInstance();
+				(nppParamInst.getNativeLangSpeaker())->messageBox(
+					"FindAutoChangeOfInSelectionWarning",
+					_hSelf,
+					L"The \"In selection\" checkbox state has been automatically modified.\r\n"
+					L"Please verify the search condition before performing the action.",
+					L"Search warning",
+					MB_OK | MB_APPLMODAL);
+			}
+
 			return 0;
 		}
 
@@ -3592,7 +3635,8 @@ void FindReplaceDlg::findAllIn(InWhat op)
 
 		_pFinder->setFinderReadOnly(true);
 		_pFinder->_scintView.execute(SCI_SETCODEPAGE, SC_CP_UTF8);
-		_pFinder->_scintView.execute(SCI_USEPOPUP, FALSE);
+		_pFinder->_scintView.execute(SCI_USEPOPUP, SC_POPUP_NEVER);
+		_pFinder->_scintView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_OFF); // Turn off the modification event
 		_pFinder->_scintView.execute(SCI_SETUNDOCOLLECTION, false);	//dont store any undo information
 		_pFinder->_scintView.execute(SCI_SETCARETWIDTH, 1);
 		_pFinder->_scintView.showMargin(ScintillaEditView::_SC_MARGE_FOLDER, true);
@@ -3690,11 +3734,11 @@ void FindReplaceDlg::findAllIn(InWhat op)
 		::SendMessage(_hSelf, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(::GetDlgItem(_hSelf, IDD_FINDINFILES_DIR_COMBO)), TRUE);
 }
 
-Finder * FindReplaceDlg::createFinder()
+Finder* FindReplaceDlg::createFinder()
 {
 	NppParameters& nppParam = NppParameters::getInstance();
 
-	Finder *pFinder = new Finder();
+	Finder* pFinder = new Finder();
 	pFinder->init(_hInst, (*_ppEditView)->getHParent(), _ppEditView);
 
 	tTbData	data{};
@@ -3740,7 +3784,8 @@ Finder * FindReplaceDlg::createFinder()
 
 	pFinder->setFinderReadOnly(true);
 	pFinder->_scintView.execute(SCI_SETCODEPAGE, SC_CP_UTF8);
-	pFinder->_scintView.execute(SCI_USEPOPUP, FALSE);
+	pFinder->_scintView.execute(SCI_USEPOPUP, SC_POPUP_NEVER);
+	pFinder->_scintView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_OFF); // Turn off the modification event
 	pFinder->_scintView.execute(SCI_SETUNDOCOLLECTION, false);	//dont store any undo information
 	pFinder->_scintView.execute(SCI_SETCARETWIDTH, 1);
 	pFinder->_scintView.showMargin(ScintillaEditView::_SC_MARGE_FOLDER, true);

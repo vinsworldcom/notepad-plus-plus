@@ -224,6 +224,7 @@ LRESULT Notepad_plus::init(HWND hwnd)
 	_subEditView.init(_pPublicInterface->getHinst(), hwnd);
 
 	_fileEditView.init(_pPublicInterface->getHinst(), hwnd);
+	_fileEditView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_OFF); // Turn off the modification event
 	MainFileManager.init(this, &_fileEditView); //get it up and running asap.
 
 	nppParam.setFontList(hwnd);
@@ -280,6 +281,7 @@ LRESULT Notepad_plus::init(HWND hwnd)
 	_invisibleEditView.init(_pPublicInterface->getHinst(), hwnd);
 	_invisibleEditView.execute(SCI_SETUNDOCOLLECTION);
 	_invisibleEditView.execute(SCI_EMPTYUNDOBUFFER);
+	_invisibleEditView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_OFF); // Turn off the modification event
 	_invisibleEditView.wrap(false); // Make sure no slow down
 
 	// Configuration of 2 scintilla views
@@ -629,8 +631,8 @@ LRESULT Notepad_plus::init(HWND hwnd)
 
 	if (nppParam.hasCustomContextMenu())
 	{
-		_mainEditView.execute(SCI_USEPOPUP, FALSE);
-		_subEditView.execute(SCI_USEPOPUP, FALSE);
+		_mainEditView.execute(SCI_USEPOPUP, SC_POPUP_NEVER);
+		_subEditView.execute(SCI_USEPOPUP, SC_POPUP_NEVER);
 	}
 
 	_nativeLangSpeaker.changeMenuLang(_mainMenuHandle);
@@ -1331,6 +1333,7 @@ bool Notepad_plus::replaceInOpenedFiles()
 	}
 
 	_invisibleEditView.execute(SCI_SETDOCPOINTER, 0, oldDoc);
+
 	_invisibleEditView.setCurrentBuffer(oldBuf);
 	_pEditView = pOldView;
 
@@ -3437,10 +3440,29 @@ bool isUrl(wchar_t * text, int textLen, int start, int* segmentLen)
 	return false;
 }
 
+void Notepad_plus::removeAllHotSpot()
+{
+	DocTabView* twoDocView[] { &_mainDocTab, &_subDocTab };
+	for (DocTabView* pDocView : twoDocView)
+	{
+		for (size_t i = 0; i < pDocView->nbItem(); ++i)
+		{
+			BufferID id = pDocView->getBufferByIndex(i);
+			Buffer* buf = MainFileManager.getBufferByID(id);
+
+			if (buf->allowClickableLink()) // if it's not allowed clickabled link in the buffer, there's nothing to be cleared
+			{
+				MainFileManager.removeHotSpot(buf);
+			}
+		}
+	}
+}
+
 void Notepad_plus::addHotSpot(ScintillaEditView* view)
 {
 	if (_isAttemptingCloseOnQuit)
 		return; // don't recalculate URLs when shutting down
+
 	ScintillaEditView* pView = view ? view : _pEditView;
 	Buffer* currentBuf = pView->getCurrentBuffer();
 
@@ -3463,6 +3485,7 @@ void Notepad_plus::addHotSpot(ScintillaEditView* view)
 	pView->getVisibleStartAndEndPosition(&startPos, &endPos);
 	if (startPos >= endPos) return;
 	pView->execute(SCI_SETINDICATORCURRENT, URL_INDIC);
+
 	if (urlAction == urlDisable || !currentBuf->allowClickableLink())
 	{
 		pView->execute(SCI_INDICATORCLEARRANGE, startPos, endPos - startPos);
@@ -3875,7 +3898,9 @@ void Notepad_plus::setLanguage(LangType langType)
 			reset = true;
 			_subEditView.saveCurrentPos();
 			prev = _subEditView.execute(SCI_GETDOCPOINTER);
+			_subEditView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_OFF);
 			_subEditView.execute(SCI_SETDOCPOINTER, 0, 0);
+			_subEditView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_ON);
 		}
 	}
 	
@@ -3890,7 +3915,9 @@ void Notepad_plus::setLanguage(LangType langType)
 
 	if (reset)
 	{
+		_subEditView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_OFF);
 		_subEditView.execute(SCI_SETDOCPOINTER, 0, prev);
+		_subEditView.execute(SCI_SETMODEVENTMASK, MODEVENTMASK_ON);
 		_subEditView.restoreCurrentPosPreStep();
 	}
 }
@@ -4661,6 +4688,10 @@ void Notepad_plus::loadBufferIntoView(BufferID id, int whichOne, bool dontClose)
 		if (buf->isDirty() || !buf->isUntitled())
 		{
 			idToClose = BUFFER_INVALID;
+		}
+		else
+		{
+			buf->setLastLangType(-1); // When replacing the "new" tab with an opened file, the last used language should be reset to its initial value so that the language can be reloaded later in the activateBuffer() function.
 		}
 	}
 
