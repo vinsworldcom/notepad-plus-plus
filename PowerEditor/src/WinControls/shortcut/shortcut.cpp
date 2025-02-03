@@ -102,7 +102,7 @@ KeyIDNAME namedKeyArray[] = {
 {"Numpad 9", VK_NUMPAD9},
 {"Num *", VK_MULTIPLY},
 {"Num +", VK_ADD},
-// {"Num Enter"), VK_SEPARATOR},	//this one doesnt seem to work
+// {"Num Enter"), VK_SEPARATOR},	//this one doesnt seem to work: see below
 {"Num -", VK_SUBTRACT},
 {"Num .", VK_DECIMAL},
 {"Num /", VK_DIVIDE},
@@ -145,9 +145,151 @@ KeyIDNAME namedKeyArray[] = {
 {"/", VK_OEM_2},
 
 {"<>", VK_OEM_102},
+
+// add placeholders for the VirtualKeys that aren't on the standard en-US keyboard
+{"", VK_OEM_8},	// VK_OEM_8 not on US keyboards, despite being named
+{"", VK_SEPARATOR}, // used for the ',' in "1,234,567.89", but it's not on most keyboards, so keep it in the custom section
+{"", 0x88},		// RESERVED
+{"", 0x89},		// RESERVED
+{"", 0x8A},		// RESERVED
+{"", 0x8B},		// RESERVED
+{"", 0x8C},		// RESERVED
+{"", 0x8D},		// RESERVED
+{"", 0x8E},		// RESERVED
+{"", 0x8F},		// RESERVED
+{"", 0x92},		// OEM SPECIFIC
+{"", 0x93},		// OEM SPECIFIC
+{"", 0x94},		// OEM SPECIFIC
+{"", 0x95},		// OEM SPECIFIC
+{"", 0x96},		// OEM SPECIFIC
+{"", 0x97},		// UNASSIGNED
+{"", 0x98},		// UNASSIGNED
+{"", 0x99},		// UNASSIGNED
+{"", 0x9A},		// UNASSIGNED
+{"", 0x9B},		// UNASSIGNED
+{"", 0x9C},		// UNASSIGNED
+{"", 0x9D},		// UNASSIGNED
+{"", 0x9E},		// UNASSIGNED
+{"", 0x9F},		// UNASSIGNED
+{"", 0xB8},		// RESERVED
+{"", 0xB9},		// RESERVED
+{"", 0xC1},		// RESERVED: ABNT_C1
+{"", 0xC2},		// RESERVED: ABNT_C2
+{"", 0xC3},		// RESERVED
+{"", 0xC4},		// RESERVED
+{"", 0xC5},		// RESERVED
+{"", 0xC6},		// RESERVED
+{"", 0xC7},		// RESERVED
+{"", 0xC8},		// RESERVED
+{"", 0xC9},		// RESERVED
+{"", 0xCA},		// RESERVED
+{"", 0xCB},		// RESERVED
+{"", 0xCC},		// RESERVED
+{"", 0xCD},		// RESERVED
+{"", 0xCE},		// RESERVED
+{"", 0xCF},		// RESERVED
+{"", 0xD0},		// RESERVED
+{"", 0xD1},		// RESERVED
+{"", 0xD2},		// RESERVED
+{"", 0xD3},		// RESERVED
+{"", 0xD4},		// RESERVED
+{"", 0xD5},		// RESERVED
+{"", 0xD6},		// RESERVED
+{"", 0xD7},		// RESERVED
+{"", 0xD8},		// RESERVED
+{"", 0xD9},		// RESERVED
+{"", 0xDA},		// RESERVED
+{"", 0xE0},		// RESERVED
+{"", 0xE1},		// OEM SPECIFIC
+{"", 0xE3},		// OEM SPECIFIC
+{"", 0xE4},		// OEM SPECIFIC
+{"", 0xE6},		// OEM SPECIFIC
+{"", 0xE8},		// UNASSIGNED
+{"", 0xE9},		// OEM SPECIFIC
+{"", 0xEA},		// OEM SPECIFIC
+{"", 0xEB},		// OEM SPECIFIC
+{"", 0xEC},		// OEM SPECIFIC
+{"", 0xED},		// OEM SPECIFIC
+{"", 0xEE},		// OEM SPECIFIC
+{"", 0xEF},		// OEM SPECIFIC
+{"", 0xF0},		// OEM SPECIFIC
+{"", 0xF1},		// OEM SPECIFIC
+{"", 0xF2},		// OEM SPECIFIC
+{"", 0xF3},		// OEM SPECIFIC
+{"", 0xF4},		// OEM SPECIFIC
+{"", 0xF5},		// OEM SPECIFIC
 };
 
 #define nbKeys sizeof(namedKeyArray)/sizeof(KeyIDNAME)
+
+#define MAX_MAPSTR_CHARS 16
+map<UCHAR, char[MAX_MAPSTR_CHARS+1]> oemVirtualKeyMap;
+std::vector<UCHAR> oemVkUsedIDs;
+void mapOemVirtualKeys()
+{
+	const LANGID EN_US = 0x0409;
+	
+	// this function should only be called once, so update the flag
+	static bool isMapped = false;
+	if (isMapped) return;
+	
+	// determine the active keyboard "language"
+	LANGID current_lang_id = LOWORD(GetKeyboardLayout(0));
+	
+	std::vector<UCHAR> localizableNumpad{VK_MULTIPLY, VK_ADD, VK_SUBTRACT, VK_DECIMAL, VK_DIVIDE, VK_SEPARATOR};
+	
+	// for each of the namedKeyArray, check if it's VK_OEM_*, and update the map of VK_OEM names as needed
+	for (size_t i = 0 ; i < nbKeys ; ++i)
+	{
+		// only need to map the VK_OEM_* keys, which are all at or above 0xA0, or any of the localizable keys on the keypad
+		bool keyIsLocalizableOnNumpad = (std::find(localizableNumpad.begin(), localizableNumpad.end(), namedKeyArray[i].id) != localizableNumpad.end());
+		if ((namedKeyArray[i].id >= 0xA0) || keyIsLocalizableOnNumpad)
+		{
+			// now update the STR in the mapping
+			UINT v2c = MapVirtualKeyW((UINT)namedKeyArray[i].id, MAPVK_VK_TO_CHAR);
+			
+			// if it's a "dead key" (pre-accent modifier) or "ligature key", it will be marked with high order bits; mask those out...
+			v2c = v2c & 0x1FFFFF;	// highest unicode is U+1F_FFFF, so that's the highest valid codepoint
+			
+			// if it's a normal character, just put it in the map; if the codepoint is higher than 0x7F, need to convert from codepoint to MultiByte UTF8-encoded text
+			if (v2c < 0x80)
+			{
+				sprintf_s(oemVirtualKeyMap[namedKeyArray[i].id], MAX_MAPSTR_CHARS, "%c", v2c);
+			}
+			else 
+			{
+				// convert from codepoint to MultiByte UTF8-encoded text
+				wchar_t v2w[2] = { (wchar_t)v2c, 0x00 };
+				char bytes[8] = {0};
+				int len = WideCharToMultiByte(CP_UTF8, 0, &v2w[0], -1, NULL, 0, NULL, NULL);
+				if (len > 0)
+				{
+					WideCharToMultiByte(CP_UTF8, 0, &v2w[0], -1, &bytes[0], len, NULL, NULL);
+				}
+				sprintf_s(oemVirtualKeyMap[namedKeyArray[i].id], MAX_MAPSTR_CHARS, "%s", bytes);
+			}
+
+			// look for edge cases for naming
+			if (current_lang_id == EN_US && oemVirtualKeyMap[namedKeyArray[i].id][0] == '`')
+			{
+				// en-US only: change from ` to ~, because that's what's historically been shown
+				oemVirtualKeyMap[namedKeyArray[i].id][0] = '~';
+			}
+			else if (oemVirtualKeyMap[namedKeyArray[i].id][0] && keyIsLocalizableOnNumpad)
+			{
+				// make sure any localized numeric-keypad characters have the "Num" as a prefix
+				char old_char = oemVirtualKeyMap[namedKeyArray[i].id][0];
+				sprintf_s(oemVirtualKeyMap[namedKeyArray[i].id], MAX_MAPSTR_CHARS, "Num %c", old_char);
+			}
+			else if (oemVirtualKeyMap[namedKeyArray[i].id][0] == '.' && namedKeyArray[i].id != VK_DECIMAL && namedKeyArray[i].id != VK_OEM_PERIOD)
+			{
+				// the '.' being associated with something other than VK_DECIMAL and VK_OEM_PERIOD must be on the numeric keypad, probably as ABNT2_C2
+				sprintf_s(oemVirtualKeyMap[namedKeyArray[i].id], MAX_MAPSTR_CHARS, "Num .");
+			}
+		}
+	}
+	isMapped = true;
+}
 
 string Shortcut::toString() const
 {
@@ -283,6 +425,7 @@ size_t ScintillaKeyMap::getSize() const
 
 void getKeyStrFromVal(UCHAR keyVal, string & str)
 {
+	mapOemVirtualKeys();
 	str = "";
 	bool found = false;
 	size_t i;
@@ -294,8 +437,17 @@ void getKeyStrFromVal(UCHAR keyVal, string & str)
 			break;
 		}
 	}
-	if (found)
+	if (found) 
+	{
+		// by default, assume it will just use the original name
 		str = namedKeyArray[i].name;
+		
+		// but if that key is mapped on this keyboard, then use the mapped name (if the name is empty, it is not on the active keyboard)
+		if (oemVirtualKeyMap.find(namedKeyArray[i].id) != oemVirtualKeyMap.end())
+		{
+			str = oemVirtualKeyMap[namedKeyArray[i].id];
+		}
+	}
 	else 
 		str = "Unlisted";
 }
@@ -387,6 +539,8 @@ intptr_t CALLBACK Shortcut::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPar
 		{
 			NppDarkMode::autoSubclassAndThemeChildControls(_hSelf);
 
+			mapOemVirtualKeys();
+
 			::SetDlgItemText(_hSelf, IDC_NAME_EDIT, _canModifyName ? string2wstring(getMenuName(), CP_UTF8).c_str() : string2wstring(getName(), CP_UTF8).c_str());	//display the menu name, with ampersands, for macros
 			if (!_canModifyName)
 				::SendDlgItemMessage(_hSelf, IDC_NAME_EDIT, EM_SETREADONLY, TRUE, 0);
@@ -396,13 +550,28 @@ intptr_t CALLBACK Shortcut::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPar
 			::SendDlgItemMessage(_hSelf, IDC_ALT_CHECK, BM_SETCHECK, _keyCombo._isAlt?BST_CHECKED:BST_UNCHECKED, 0);
 			::SendDlgItemMessage(_hSelf, IDC_SHIFT_CHECK, BM_SETCHECK, _keyCombo._isShift?BST_CHECKED:BST_UNCHECKED, 0);
 			::EnableWindow(::GetDlgItem(_hSelf, IDOK), isValid() && (textlen > 0 || !_canModifyName));
+
+			// while buiding the IDC_KEY_COMBO keys, update the map to which VirtualKey is used for each index
 			int iFound = -1;
 			for (size_t i = 0 ; i < nbKeys ; ++i)
 			{
-				::SendDlgItemMessage(_hSelf, IDC_KEY_COMBO, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(string2wstring(namedKeyArray[i].name, CP_UTF8).c_str()));
+				const char* nameStr = namedKeyArray[i].name;
+				
+				// use the virtual key value, if it's been mapped
+				if (oemVirtualKeyMap.find(namedKeyArray[i].id) != oemVirtualKeyMap.end()) 
+				{
+					nameStr = oemVirtualKeyMap[namedKeyArray[i].id];
+				} 
+				
+				// only add a key to the IDC_KEY_COMBO list if the string is not empty
+				if (nameStr[0])
+				{
+					::SendDlgItemMessage(_hSelf, IDC_KEY_COMBO, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(string2wstring(nameStr, CP_UTF8).c_str()));
+					oemVkUsedIDs.push_back(namedKeyArray[i].id);
+				}
 
 				if (_keyCombo._key == namedKeyArray[i].id)
-					iFound = static_cast<int32_t>(i);
+					iFound = static_cast<int32_t>(oemVkUsedIDs.size());
 			}
 
 			if (iFound != -1)
@@ -522,8 +691,8 @@ intptr_t CALLBACK Shortcut::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPar
 					{
 						if (LOWORD(wParam) == IDC_KEY_COMBO)
 						{
-							auto i = ::SendDlgItemMessage(_hSelf, LOWORD(wParam), CB_GETCURSEL, 0, 0);
-							_keyCombo._key = namedKeyArray[i].id;
+							auto iSel = ::SendDlgItemMessage(_hSelf, LOWORD(wParam), CB_GETCURSEL, 0, 0);
+							_keyCombo._key = oemVkUsedIDs[iSel];
 							::EnableWindow(::GetDlgItem(_hSelf, IDOK), isValid() && (textlen > 0 || !_canModifyName));
 							::ShowWindow(::GetDlgItem(_hSelf, IDC_WARNING_STATIC), isEnabled()?SW_HIDE:SW_SHOW);
 							updateConflictState();
@@ -1074,12 +1243,26 @@ intptr_t CALLBACK ScintillaKeyMap::run_dlgProc(UINT Message, WPARAM wParam, LPAR
 		{
 			NppDarkMode::autoSubclassAndThemeChildControls(_hSelf);
 
+			mapOemVirtualKeys();
+
 			::SetDlgItemText(_hSelf, IDC_NAME_EDIT, string2wstring(_name, CP_UTF8).c_str());
 			_keyCombo = _keyCombos[0];
 
 			for (size_t i = 0 ; i < nbKeys ; ++i)
 			{
-				::SendDlgItemMessage(_hSelf, IDC_KEY_COMBO, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(string2wstring(namedKeyArray[i].name, CP_UTF8).c_str()));
+				const char* nameStr = namedKeyArray[i].name;
+				
+				if (oemVirtualKeyMap.find(namedKeyArray[i].id) != oemVirtualKeyMap.end()) 
+				{
+					nameStr = oemVirtualKeyMap[namedKeyArray[i].id];
+				} 
+				
+				// only add a key to the IDC_KEY_COMBO list if the string is not empty
+				if (nameStr[0])
+				{
+					::SendDlgItemMessage(_hSelf, IDC_KEY_COMBO, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(string2wstring(nameStr, CP_UTF8).c_str()));
+					oemVkUsedIDs.push_back(namedKeyArray[i].id);
+				}
 			}
 
 			for (size_t i = 0; i < _size; ++i)
@@ -1228,8 +1411,8 @@ intptr_t CALLBACK ScintillaKeyMap::run_dlgProc(UINT Message, WPARAM wParam, LPAR
 						{
 							case IDC_KEY_COMBO:
 							{
-								auto i = ::SendDlgItemMessage(_hSelf, IDC_KEY_COMBO, CB_GETCURSEL, 0, 0);
-								_keyCombo._key = namedKeyArray[i].id;
+								auto iSel = ::SendDlgItemMessage(_hSelf, IDC_KEY_COMBO, CB_GETCURSEL, 0, 0);
+								_keyCombo._key = oemVkUsedIDs[iSel];
 								::ShowWindow(::GetDlgItem(_hSelf, IDC_WARNING_STATIC), isEnabled() ? SW_HIDE : SW_SHOW);
 								validateDialog();
 								return TRUE;

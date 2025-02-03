@@ -112,6 +112,7 @@ intptr_t CALLBACK GoToLineDlg::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 							(*_ppEditView)->execute(SCI_GOTOPOS, posToGoto);
 						}
 					}
+					unsigned long MODEVENTMASK_ON = NppParameters::getInstance().getScintillaModEventMask();
 					(*_ppEditView)->execute(SCI_SETMODEVENTMASK, MODEVENTMASK_ON);
 
 					SCNotification notification{};
@@ -171,6 +172,6 @@ void GoToLineDlg::updateLinesNumbers() const
 		limit = (currentDocLength > 0 ? currentDocLength - 1 : 0);
 	}
 
-	::SetDlgItemTextA(_hSelf, ID_CURRLINE, std::to_string(current).c_str());
+	::SetDlgItemTextA(_hSelf, ID_CURRLINE_EDIT, std::to_string(current).c_str());
 	::SetDlgItemTextA(_hSelf, ID_LASTLINE, std::to_string(limit).c_str());
 }
